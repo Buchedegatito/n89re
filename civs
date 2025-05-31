@@ -1,0 +1,382 @@
+/* 
+TPW CIVS - Ambient civilians
+Author: tpw 
+Date: 20230105
+Version: 1.67
+Requires: CBA A3, tpw_core.sqf
+Compatibility: SP, MP client
+
+Disclaimer: Feel free to use and modify this code, on the proviso that you post back changes and improvements so that everyone can benefit from them, and acknowledge the original author (tpw) in any derivative works.     
+
+To use: 
+1 - Save this script into your mission directory as eg tpw_civs.sqf
+2 - Call it with 0 = [5,150,5,4,50,0,10,1,[],"spawnscript"] execvm "tpw_civs.sqf"; where 5 = start delay,150 = radius, 5 = how many houses per civilian, 4 = maximum squad inflicted civ casualties, 50 = max total casualties, 0 = what to do if casualty thresholds exceeded (0 - nothing, 1 - popup message, 2 - end mission, 3 - increase number of spawned enemies), 10 = maximum possible civs regardless of density, [] = civilians with these strings in their classnames will be excluded. spawnscript = function or script to run when each civ is spawned. eg "_this call your_function", or "[_this,2] execvm 'your_script.sqf'" where _this is the civ.
+
+THIS SCRIPT WON'T RUN ON DEDICATED SERVERS
+*/
+
+if (isDedicated) exitWith {};
+if (count _this < 8) exitwith {hint "TPW CIVS incorrect/no config, exiting."};
+WaitUntil {!isNull FindDisplay 46};
+WaitUntil {!isnil "tpw_core_sunangle"};
+
+// READ IN VARIABLES
+tpw_civ_version = "1.67"; // Version string
+tpw_civ_sleep = _this select 0;
+tpw_civ_radius = _this select 1;
+tpw_civ_density = _this select 2;
+tpw_civ_maxsquadcas  = _this select 3;
+tpw_civ_maxallcas  = _this select 4;
+tpw_civ_casdisplay = _this select 5;
+tpw_civ_maxciv = _this select 6;
+tpw_civ_init = _this select 7;
+
+// DFAULT VALUES IF MP
+if (isMultiplayer) then 
+	{
+	tpw_civ_sleep = 5;
+	tpw_civ_radius = 150;
+	tpw_civ_waypoints = 15;
+	tpw_civ_density =5;
+	};
+
+// VARIABLES
+tpw_civ_oldpos = [0,0,0];
+tpw_civ_civarray = []; // array holding spawned civs
+tpw_civ_houses = []; // array holding civilian houses near player
+tpw_civ_civnum = 0; // number of civs to spawn
+tpw_civ_debug = false; // Debugging
+tpw_civ_allcas = 0; // all civ casualities 
+tpw_civ_squadcas = 0; // civ casualities caused by squad
+tpw_civ_active = true; // global activate/deactivate
+tpw_civ_minstoptime = 6; // minimum time civs will interact
+tpw_civ_maxstoptime = 10; // maximum time civs will interact
+tpw_civ_resettime = tpw_civ_maxstoptime * 3; // time before civ can interact again
+tpw_civ_stoprange = tpw_civ_maxstoptime - tpw_civ_minstoptime; 
+tpw_civ_rain = false;
+tpw_civ_gunfire = false;
+if (tpw_civ_maxciv > 100) then {tpw_civ_maxciv = 100}; // hardcoded upper limit to civs to prevent using all groups
+tpw_civ_late = false;
+
+tpw_civ_civanims = [
+"HubBriefing_think",
+"HubBriefing_lookaround1",
+"HubBriefing_lookaround2",
+"HubBriefing_pointleft",
+"HubBriefing_pointright",
+"HubBriefing_scratch",
+"HubBriefing_stretch",
+"Acts_CivilTalking_1",
+"Acts_CivilTalking_2",
+"Acts_CivilListening_1",
+"Acts_CivilListening_2",
+"Acts_CivilIdle_1",
+"Acts_CivilIdle_2"
+];
+// DELAY
+sleep tpw_civ_sleep;
+
+// CREATE AI CENTRES SO SPAWNED UNITS KNOW WHO'S AN ENEMY
+_centerC = createCenter civilian;
+
+// TEST
+tpw_civ_fnc_test = 
+	{
+	private _unit = _this select 0;
+	private _num = _this select 1;
+	hint format ["%1 %2",_unit, _num];
+	};
+
+// IF CIV IS SHOT BY PLAYER
+tpw_civ_fnc_casualty = 
+    {
+    private ["_civ","_shooter"];
+	_civ = _this select 0;
+	_shooter = _this select 1;
+	if (_civ getvariable ["tpw_civ_cas",0] == 0) then
+		{
+		_civ setvariable ["tpw_civ_cas",1];
+		tpw_civ_allcas = tpw_civ_allcas + 1;
+		if (_shooter in (units (group player))) then 
+			{
+			tpw_civ_squadcas = tpw_civ_squadcas + 1;
+			if (tpw_civ_casdisplay == 3 && {tpw_civ_squadcas > tpw_civ_maxsquadcas} && {!isnil "tpw_skirmish_active"} && {tpw_skirmish_active}) then
+				{
+				player addRating 1000;
+				if (side player == WEST) then
+					{
+					tpw_skirmish_enemysquad_max = tpw_skirmish_enemysquad_max + 1;
+					tpw_skirmish_enemyvehicles_max = tpw_skirmish_enemyvehicles_max + 1;
+					};
+				if (side player == EAST) then
+					{
+					tpw_skirmish_friendlysquad_max = tpw_skirmish_friendlysquad_max + 1;
+					tpw_skirmish_friendlyvehicles_max = tpw_skirmish_friendlyvehicles_max + 1;
+					};	
+				};
+			};
+		};
+	if (tpw_civ_allcas > tpw_civ_maxallcas || tpw_civ_squadcas > tpw_civ_maxsquadcas) then 
+		{
+		switch tpw_civ_casdisplay do
+			{
+			case 1: 
+				{
+				hint format ["Warning: significant civilian casualties!\n %1 total casualties.\n%2 attributed to your squad.",tpw_civ_allcas,tpw_civ_squadcas];
+				};
+			case 2:
+				{
+				[nil,false,nil] call BIS_fnc_endMission;
+				};
+			};	
+		};
+	};
+
+// SPAWN CIV INTO EMPTY GROUP
+tpw_civ_fnc_civspawn =
+	{
+	private ["_civtype","_civ","_spawnpos","_i","_ct","_sqname","_house","_wp","_wppos"];
+	
+	// Only bother if no nearby gunfire / explosions
+	if (tpw_core_battle) exitwith {};
+	
+	// Clothing
+	tpw_civ_clothes = [] call tpw_core_fnc_clothes;
+	
+	// Pick a random house for civ to spawn into
+	_spawnpos = getpos (tpw_civ_houses select (floor (random (count tpw_civ_houses))));
+	_civ = [_spawnpos] call tpw_core_fnc_spawnciv;
+	_civ switchmove "";
+	_civ setcaptive true;
+	_civ enablesimulation false;
+	_civ setskill 0;
+	_civ disableAI "TARGET";
+	_civ disableAI "FSM";
+	_civ disableAI "AUTOTARGET";
+	_civ disableAI "AIMINGERROR";
+	_civ disableAI "SUPPRESSION"; 
+	_civ disableAI "CHECKVISIBLE"; 
+	_civ disableAI "COVER"; 
+	_civ disableAI "AUTOCOMBAT";
+	removeallweapons _civ; 
+	_civ setAnimSpeedCoef 0.7 + random 0.2;
+	_civ setSpeaker "NoVoice";
+	_civ setvariable ["tpw_civ_stucktime", diag_ticktime + 60];
+	
+	//Add it to the array of civs for this player
+	tpw_civ_civarray set [count tpw_civ_civarray,_civ];
+	
+	//Mark it as owned by this player
+	_civ setvariable ["tpw_civ_owner", [player],true];
+
+	//Add killed/hit eventhandlers
+	_civ addeventhandler ["Hit",{_this call tpw_civ_fnc_casualty}];
+	_civ addeventhandler ["Killed",{_this call tpw_civ_fnc_casualty}];
+
+	//Speed and behaviour
+	group _civ setspeedmode "LIMITED";
+	group _civ setBehaviour "CARELESS";
+		
+	// User init	
+	if (count tpw_civ_init > 5) then
+		{
+		_civ call compile tpw_civ_init;
+		};	
+		
+	// Activate civ	
+	_civ enablesimulation true;
+	};
+    
+// SEE IF ANY CIVS OWNED BY OTHER PLAYERS ARE WITHIN RANGE, WHICH CAN BE USED INSTEAD OF SPAWNING A NEW CIV
+tpw_civ_fnc_nearciv =
+	{
+	private ["_owner","_shareflag"];
+	_shareflag = 0;
+	if (isMultiplayer) then         
+		{
+			{
+			// Live units within range
+			if (_x distance vehicle player < tpw_civ_radius && alive _x) then 
+				{
+				_owner = _x getvariable ["tpw_civ_owner",[]];
+
+				//Units with owners, but not this player
+				if ((count _owner > 0) && !(player in _owner)) exitwith
+					{
+					_shareflag = 1;
+					_owner set [count _owner,player]; // add player as another owner of this civ
+					_x setvariable ["tpw_civ_owner",_owner,true]; // update ownership
+					tpw_civ_civarray set [count tpw_civ_civarray,_x]; // add this civ to the array of civs for this player
+					};
+				};
+			} count allunits;
+		};    
+
+	//Otherwise, spawn a new civ
+	if (_shareflag == 0 && {count tpw_civ_houses > 2} && {!tpw_civ_late}) then 
+		{
+		[] call tpw_civ_fnc_civspawn;    
+		};     
+	};
+	
+// PERIODICALLY UPDATE POOL OF ENTERABLE HOUSES NEAR PLAYER, DETERMINE MAX CIVILIAN NUMBER, DISOWN CIVS FROM DEAD PLAYERS IN MP
+0 = [] spawn 
+	{
+	while {true} do
+		{
+		if (tpw_civ_oldpos distance position player > (tpw_civ_radius / 2)) then
+			{
+			tpw_civ_oldpos = position player;
+			private ["_civarray","_deadplayer","_housestring","_uninhab","_house","_i"];
+			
+			// Scan for habitable houses 
+			tpw_civ_houses = [tpw_civ_radius] call tpw_core_fnc_screenhouses;
+			tpw_civ_houses = tpw_civ_houses select {damage _x < 0.75};
+			tpw_civ_civnum = floor ((count tpw_civ_houses) / tpw_civ_density);			
+			if (tpw_civ_civnum > tpw_civ_maxciv) then
+					{
+					tpw_civ_civnum = tpw_civ_maxciv;
+					};
+				
+			// No new civs if raining, gunfire or very late 
+			if (tpw_civ_rain || tpw_civ_late || tpw_core_battle) then 
+				{
+				tpw_civ_civnum = 0;
+				};
+					
+			// Check if any players have been killed and disown their civs
+			if (isMultiplayer) then 
+				{
+					{
+					if ((isplayer _x) && !(alive _x)) then
+						{
+						_deadplayer = _x;
+						_civarray = _x getvariable ["tpw_civarray"];
+							{
+							_x setvariable ["tpw_civ_owner",(_x getvariable "tpw_civ_owner") - [_deadplayer],true];
+							} count _civarray;
+						};
+					} count allunits;    
+				};
+			};	
+		sleep 10.13;
+		};
+	};
+
+// MAIN LOOP - ADD AND REMOVE CIVS AS NECESSARY
+sleep 10;
+while {true} do 
+	{
+	if (tpw_civ_active && vehicle player == player) then
+		{
+		private ["_group","_civ","_i", "_owner","_dests","_dest","_nearcars","_dist"];
+
+		// Too late?
+		if (daytime > tpw_core_morning && daytime < tpw_core_night) then
+			{
+			tpw_civ_late = false;
+			} else
+			{
+			tpw_civ_late = true;
+			};
+		
+		// Rain?
+		if (rain > 0.2) then
+			{
+			tpw_civ_rain = true;
+			} else
+			{
+			tpw_civ_rain = false;
+			};	
+			
+		// Add civs if there are less than the calculated civilian density for the player's current location 
+		if ((count tpw_civ_civarray < tpw_civ_civnum) && (count tpw_civ_houses > 0)) then
+			{
+			[] spawn tpw_civ_fnc_nearciv;
+			};	
+
+		// For each civ...	
+		if (count tpw_civ_civarray > 0) then
+			{
+			for "_i" from 0 to (count tpw_civ_civarray - 1) do
+				{
+				_civ = tpw_civ_civarray select _i;
+
+				// For live civs
+				if (alive _civ) then 
+					{
+					_dist = _civ distance player;
+					
+					// No stupid panic animations
+					_civ setbehaviour "CARELESS";
+					if (["apan",animationState _civ] call BIS_fnc_inString) then
+						{
+						_civ switchmove "";
+						}; 	
+					
+					// Is civ still (potentially stuck)?
+					if (speed _civ == 0) then
+						{
+						_civ switchmove "";	
+						_civ domove position (tpw_civ_houses select floor random count tpw_civ_houses);	// try to  move it to a different house
+						_civ forcespeed 10;
+						sleep 0.1;
+						_civ forcespeed -1;
+						} else
+						{
+						_civ setvariable ["tpw_civ_stucktime", diag_ticktime + 15];
+						};	
+					
+					// Civs run in the rain or in battle or if player has weapon up
+					if (tpw_civ_rain || tpw_core_battle || (_dist < 25 && {!(weaponlowered player)})) then 
+						{
+						_civ forcespeed 4;
+						_civ setspeedmode "FULL";
+						}
+					else
+						{
+						_civ forcespeed -1;
+						_civ setspeedmode "LIMITED";
+						};
+						
+					// Move off the road during battle or rain, or nearby cars
+					_nearcars = (_civ nearentities [["car","tank"],8]) select {simulationenabled _x};
+					if (tpw_civ_rain || tpw_core_battle || count _nearcars > 0) then
+						{
+						_civ domove (position nearestbuilding _civ);
+						};		
+						
+					// Check if civ is out of range and not visible to player. If so, disown it and remove it from players civ array    
+					if (_dist > tpw_civ_radius || tpw_civ_late || diag_ticktime > _civ getvariable "tpw_civ_stucktime") then
+						{
+						_owner = _civ getvariable "tpw_civ_owner";
+						_owner = _owner - [player];
+						_civ setvariable ["tpw_civ_owner",_owner,true];            
+						tpw_civ_civarray set [_i, -1];       
+						};
+
+					// Delete the live civ and its waypoints if it's not owned by anyone    
+					if (_civ getvariable "tpw_civ_owner" isequalto []) then
+						{
+						_group = group _civ;	
+						for "_i" from count (waypoints _group) to 1 step -1 do
+							{
+							deleteWaypoint ((waypoints _group) select _i);
+							};
+						deletevehicle _civ;
+						deletegroup _group;
+						sleep 0.1;	
+						};    
+					} else
+					{
+					tpw_civ_civarray set [_i, -1]; // removbe civ from player's civ array, but leave dead body   
+					};					
+				};
+
+			//Update player's civ array    
+			tpw_civ_civarray = tpw_civ_civarray - [-1]; 
+			player setvariable ["tpw_civarray",tpw_civ_civarray,true];   
+			};
+		};
+	sleep random 5;    
+	};  
