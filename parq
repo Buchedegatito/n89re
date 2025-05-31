@@ -1,0 +1,342 @@
+/*
+TPW PARK - Parked cars near habitable buildings
+Version: 1.34
+Author: tpw
+Date: 20220924
+Requires: CBA A3, tpw_core.sqf
+Compatibility: SP, MP client
+	
+Disclaimer: Feel free to use and modify this code, on the proviso that you post back changes and improvements so that everyone can benefit from them, and acknowledge the original author (tpw) in any derivative works. 
+
+To use: 
+1 - Save this script into your mission directory as eg tpw_park.sqf
+2 - Call it with 0 = [25,300,20,10,["str1","str2"],1,0] execvm "tpw_park.sqf"; where 25 = percentage of houses to spawn cars near (0 = no cars, >50 inadvisable), 300 = radius (m) around player to scan for houses to spawn cars, 20 = player must be closer than this (m) to a car for it to have its simulation enabled, 10 = maximum cars to spawn regardless of settings, "str1" string of mod car classnames to include, 1 = car alarms will be set off by gunfire or explosions, 0 = 0% of cars will be wrecks (0-1, where 1 = 100% of cars will be wrecks)    
+
+THIS SCRIPT WON'T RUN ON DEDICATED SERVERS
+*/
+
+if (isDedicated) exitWith {};
+if (count _this < 6) exitwith {player sidechat "TPW PARK incorrect/no config, exiting."};
+if (_this select 0 == 0) exitwith {};
+WaitUntil {!isNull FindDisplay 46};
+
+// READ IN VARIABLES
+tpw_park_version = "1.34"; // version string
+tpw_park_perc = _this select 0; // percentage of houses with parked cars.
+tpw_park_createdist = _this select 1; // cars created within this distance, completely removed past it.
+tpw_park_simdist = _this select 2; // cars closer than this have simulation enabled.
+tpw_park_include = _this select 3; // strings of mod car classes to include
+tpw_park_alarm = _this select 4; // car alarms will be set off if car hit by bullets or explosions
+tpw_park_wreck = _this select 5; // 0-1 where 1 = 100% of cars will be wrecks  
+tpw_park_military = _this select 6; // 0-1 where 0 = civilian cars only, 1 = military vehicles only
+tpw_park_active = true; // global enable/disable
+tpw_park_cararray = []; // Array of parked cars
+tpw_park_houses = []; // array of houses to park cars near
+
+tpw_park_milcarlist = []; // military vehicles for parking
+tpw_park_civcarlist = [
+"C_Hatchback_01_F",
+"C_Hatchback_01_rallye_F",
+"C_Hatchback_01_sportF",
+"C_Offroad_01_F",
+"C_Offroad_01_repair_F",
+"C_Offroad_01_sport_F",
+"C_Offroad_01_covered_F",
+"C_SUV_01_F",
+"C_SUV_01_sport_F",
+"C_Van_01_box_F",
+"C_Van_01_transport_F",
+"C_Van_01_fuel_F"
+];
+
+tpw_park_wreckedcarlist = [
+"land_wreck_offroad_f",
+"land_wreck_van_f",
+"land_wreck_hunter_f",
+"land_wreck_car2_f",
+"land_wreck_car3_f",
+"land_wreck_uaz_f",
+"land_wreck_hmmvw_f",
+"land_wreck_truck_f",
+"land_wreck_truck_dropside_f",
+"land_wreck_skodovka_f"
+];
+
+// List of used road segments
+tpw_park_used_roads = [];
+
+
+// ADD TANOAN CARS IF AVAILABLE
+if (isclass (configfile/"CfgWeapons"/"u_c_man_casual_1_f")) then 
+	{
+	tpw_park_civcarlist = tpw_park_civcarlist + ["C_Offroad_02_unarmed_F"];
+	};
+	
+// ADD LIVONIAN CARS IF AVAILABLE
+if (isclass (configfile/"CfgVehicles"/"c_tractor_01_f")) then 
+	{
+	tpw_park_civcarlist = tpw_park_civcarlist + ["c_tractor_01_f"];
+	};	
+
+// ADD IDAP CARS IF AVAILABLE
+if (isclass (configfile/"CfgWeapons"/"U_C_IDAP_Man_cargo_F")) then 
+	{
+	private ["_cfg"];
+	_cfg = (configFile >> "CfgVehicles");
+	for "_i" from 0 to ((count _cfg) -1) do 
+		{
+		if (isClass ((_cfg select _i) ) ) then 
+			{
+			_cfgName = configName (_cfg select _i);
+			if ( (_cfgName isKindOf "car") && {getNumber ((_cfg select _i) >> "scope") == 2} && {["IDAP",str _cfgname] call BIS_fnc_inString}&& {!(["UGV",str _cfgname] call BIS_fnc_inString)}) then 
+				{
+				tpw_park_civcarlist pushback _cfgname;
+				};
+			};
+		};
+	};
+
+// ADD CARS FROM INCLUDE LIST
+	{
+
+	private ["_cfg"];
+	_cfg = (configFile >> "CfgVehicles");
+	_car = _x;
+	_x = [_x, "!",""] call CBA_fnc_replace;
+	for "_i" from 0 to ((count _cfg) -1) do 
+		{
+		if (isClass ((_cfg select _i) ) ) then 
+			{
+			_cfgName = configName (_cfg select _i);
+			_side = getNumber ((_cfg select _i) >> "side");
+			if ( (_cfgName isKindOf "car" ||_cfgName isKindOf "tank" ) && {getNumber ((_cfg select _i) >> "scope") == 2} && {[_x,str _cfgname] call BIS_fnc_inString} ) then 
+				{
+				if (["!",_car] call bis_fnc_instring) then
+					{
+					_cfgname = _cfgname + "!";
+					};
+				if (_side == 3) then
+					{
+					tpw_park_civcarlist pushback _cfgname;
+					}else
+					{
+					tpw_park_milcarlist pushback _cfgname;
+					}
+				};
+			};
+		};
+	} foreach tpw_park_include;
+	
+// User blacklist
+for "_i" from 0 to (count tpw_park_civcarlist - 1) do	
+	{	
+	_car = tpw_park_civcarlist select _i;
+		{
+		if ([_x,str _car] call BIS_fnc_inString) then
+			{
+			tpw_park_civcarlist set [_i, -1];
+			};
+		} foreach tpw_core_blacklist;
+	};
+tpw_park_civcarlist = tpw_park_civcarlist - [-1];	
+
+// SET OFF ALARM IF CAR HIT OR DAMAGED
+tpw_park_fnc_hitproc = 
+	{
+	private ["_car","_sound","_sel"];
+	_car = _this select 0;	
+	if (_car getvariable ["alarmon",0] == 1) exitwith {};
+	if (speed _car > 0 || player in _car || damage _car > 0.5 || tpw_park_alarm == 0) exitwith {};
+	_car setvariable ["alarmon",1];
+	_sel = _car getvariable "alarmsound";
+	_sound = format ["%1%2.ogg",'TPW_SOUNDS\sounds\alarm\alarm',_sel];	
+	playsound3d [_sound,_car,false,getposasl _car,3,1,200];
+	sleep 30;
+	_car setvariable ["alarmon",0];
+	};
+	
+// SCAN HOUSES AND ASSIGN PARKING SPOTS
+tpw_park_fnc_assignhouses = 
+	{
+	private ["_house","_nearroads","_road","_connected","_conroad1","_parkdir","_housedir","_parkpos","_posx","_posy","_car"];
+	
+	// Scan for habitable houses 
+	tpw_park_houses = [tpw_park_createdist] call tpw_core_fnc_screenhouses;
+	
+	// Assign park status
+	for "_i" from 0 to (count tpw_park_houses - 1) do
+		{
+		_house = tpw_park_houses select _i;
+		if (_house getvariable ["tpw_park_assigned",-1] == -1) then // if house has not been assigned
+			{
+			_house setvariable ["tpw_park_assigned",0]; // assigned no parking, will be ignored in future scans
+			
+			// Only bother if random percentage OK
+			if (random 100 > tpw_park_perc) exitwith {}; 
+			
+			// Only bother if there is a road near the house
+			_nearroads = _house nearRoads 30;	
+			if (count _nearroads == 0) exitwith {};						
+			_road = _nearroads select 0;
+
+			// Only bother if road is not used
+			if (_road in tpw_park_used_roads) exitwith {};
+			tpw_park_used_roads pushback _road;
+					
+			// Only bother if no cars or people nearby
+			if (count (_road nearentities [["car","man"],5]) > 0) exitwith {}; 
+
+			// Only bother if road is connected to other road segments
+			_connected = roadsconnectedto _road;
+			if (count _connected < 2) exitwith {};
+			
+			// Calculate spawn position at side of road 
+			_conroad = _connected select 0;			
+			_roaddir = [_road, _conroad] call BIS_fnc_DirTo; // direction of road segment
+			_parkdir = _roaddir + (180 * round (random 1)); // random direction for car, parallel to road
+			_housedir = _roaddir + 90; // direction of house
+			_roadpos = getposasl _road;
+			_roadwidth = ((getroadinfo _road) select 1);
+			if (_roadwidth == 0) then {_roadwidth = 7};
+			_width = _roadwidth -4;
+			if (_width < 2) exitwith {};
+			_posx = (_roadpos select 0) + (_width/2 * sin _housedir);
+			_posy = (_roadpos select 1) +  (_width/2 * cos _housedir);
+			_parkpos = [_posx,_posy,0];
+			
+			// Don't spawn near these buildings
+			if (typeof (nearestbuilding _parkpos) in ["Land_csla_plot_blue_vrata"]) exitwith {};
+			
+			// Assign status to house		
+			_house setvariable ["tpw_park_assigned",1]; // assigned parking spot, no car yet
+			_house setvariable ["tpw_park_pos",_parkpos]; // parking spot
+			_house setvariable ["tpw_park_dir",_parkdir]; // parking direction
+			_house setvariable ["tpw_park_road",_roadpos]; // position of road
+			tpw_park_used_roads pushback _parkpos;
+			};
+		// Create parked car 
+		if (_house getvariable "tpw_park_assigned" == 1) then
+			{
+			[_house] spawn tpw_park_fnc_spawncar;
+			};
+		};	
+	};									
+	
+// SPAWN CAR
+tpw_park_fnc_spawncar = 
+	{
+	sleep random 5;
+	_house = _this select 0;	
+	_house setvariable ["tpw_park_assigned",2]; //will not spawn car again (even if car mis-spawned and was deleted)
+	_roadpos = _house getvariable "tpw_park_road"; 
+	_pos = _house getvariable "tpw_park_pos"; 
+	_dir = _house getvariable "tpw_park_dir";
+	_car = selectrandom tpw_park_civcarlist;
+	
+	waituntil 
+		{
+		sleep 0.5;
+		_pos distance player > 50
+		};
+	
+	if (random 1 < tpw_park_military) then	
+		{
+		_car = selectrandom tpw_park_milcarlist;
+		};
+		
+	_dam =  0;
+	
+	if (["!",_car] call bis_fnc_instring) then
+		{
+		_dam = 0.75;
+		_car = [_car, "!",""] call CBA_fnc_replace;
+		};
+	
+	if (random 1 < tpw_park_wreck) then
+		{
+		_car = selectrandom tpw_park_wreckedcarlist;
+		};
+ 	_spawncar = _car createVehiclelocal _roadpos;	
+	_spawncar setdir _dir;
+	_spawncar setposatl (_pos);
+	sleep 1;
+	if (damage _spawncar == 0 && {((getposatl _spawncar) select 2 < 0.5)}) then
+		{
+		_spawncar setVectorUp surfaceNormal position _spawncar;
+		_spawncar enablesimulation false;
+		//_spawncar allowdamage false;		
+		_spawncar setfuel random 0.5;
+		_spawncar setdamage _dam;	
+
+		if (_car in tpw_park_civcarlist) then
+			{
+			_spawncar setvariable ["alarmon",0];
+			_sel = floor random 6; // random car alarm
+			_spawncar setvariable ["alarmsound",_sel];
+			if !(["bicycle",typeof _spawncar] call bis_fnc_instring) then	{_spawncar addeventhandler ["hit",{_this spawn tpw_park_fnc_hitproc}]};
+			};
+		_spawncar lock true;	
+		tpw_park_cararray pushback _spawncar;
+		} else
+		{
+		deletevehicle _spawncar;
+		};
+	};		
+	
+// ADD REMOVE PARKED CARS AS APPROPRIATE
+tpw_park_fnc_mainloop = 
+	{
+	_lastpos = [0,0,0];
+	while {true} do
+		{
+		if (tpw_park_active && {speed player < 30} && {player distance _lastpos > tpw_park_createdist/4}) then
+			{
+			// Update last position
+			_lastpos = getposasl player;
+			
+			// Assign houses and spawn parked cars
+			0= [] call tpw_park_fnc_assignhouses; 
+		
+			// Enable/disable simulation, remove distant 
+			for "_i" from 0 to (count tpw_park_cararray - 1) do
+				{
+				private _car = tpw_park_cararray select _i;
+						
+				// Enable simulation only when player nearby
+				if (player distance _car < tpw_park_simdist || damage _car > 0.2) then
+					{
+					_car enablesimulation true; 
+					_car lock false;
+					sleep 0.1;
+					_car lock false;
+					}
+				else
+					{
+					_car enablesimulation false; 
+					_car lock true;
+					};
+
+
+				// Hide distant cars	
+				if (_car distance player < tpw_park_createdist) then 
+					{
+					_car hideobject false;
+					} else
+					{
+					_car hideobject true;
+					}
+				};
+			};
+		sleep 5.33;	
+		};	
+	};	
+
+// RUN IT	
+sleep 5;
+0 = [] spawn tpw_park_fnc_mainloop;
+
+while {true} do
+	{
+	// dummy loop so script doesn't terminate
+	sleep 10;
+	};
