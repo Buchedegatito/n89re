@@ -1,0 +1,320 @@
+/*
+TPW DUCK - Units will crouch / go prone if suppressed
+Version: 1.16
+Authors: tpw 
+Date: 20230527
+Requires: CBA A3, tpw_core.sqf
+Compatibility: SP
+
+Disclaimer: Feel free to use and modify this code, on the proviso that you post back changes and improvements so that everyone can benefit from them, and acknowledge the original author (tpw) in any derivative works. 	
+
+To use: 
+1 - Save this script into your mission directory as eg tpw_duck.sqf
+2 - Call it with 0 = [0.8,1,1,1] execvm "tpw_duck.sqf"; where 0.8 = sensitivity (0 = units never duck, 1 = units always duck if suppressed), 1 = AI run from unexploded grenades (0 = units will ignore grenades), 0 = player's AI squadmembers not exluded from suppression (1= excluded), 1 = player will show strong audiovisual cues when suppressed (0 = no cues)
+
+THIS SCRIPT WON'T RUN ON DEDICATED SERVERS
+*/
+
+if ((count _this) < 4) exitwith {player sidechat "TPW DUCK incorrect/no config, exiting."};
+if (!isServer && isDedicated) exitWith {};
+WaitUntil {!isNull FindDisplay 46};
+
+/////////////
+// VARIABLES
+/////////////
+tpw_duck_version = "1.16"; // Version string
+tpw_duck_sensitivity = _this select 0; // sensitivity (0 = units never duck, 1 = units always duck if suppressed).
+tpw_duck_grenaderun = _this select 1; // Grenade avoidance ( 1 = AI run from unexploded grenades. 0 = units will ignore grenades).
+tpw_duck_nosquad = _this select 2; // Exclude player squad from suppression? 1 = exclude, 0 = don't exclude
+tpw_duck_player = _this select 3; // Audiovisual cues when player is suppressed 0-1 . 0 = don't show , 1 - strong blurring
+tpw_duck_active=true;
+tpw_duck_count = 0; 
+tpw_duck_playershots = 0;
+tpw_duck_playertime = 10000000000000;
+tpw_duck_blurflag = 0;
+
+// ANIMATION ARRAYS
+tpw_duck_croucharray = ["AmovPknlMstpSrasWnonDnon","AmovPknlMstpSrasWpstDnon","AmovPknlMstpSrasWrflDnon","AmovPknlMstpSrasWlnrDnon"];
+tpw_duck_pronearray = ["AmovPpneMstpSrasWnonDnon","AmovPpneMstpSrasWpstDnon","AmovPpneMstpSrasWrflDnon","AmovPpneMstpSrasWlnrDnon"];	
+
+// AUDIOVISUAL SUPPRESSION CUES FOR PLAYER
+tpw_duck_fnc_player =
+	{
+	private ["_shellinfo","_unit","_shooter","_shooterside","_allbullets","_enemybullets","_supstate"];
+	_shellinfo = _this select 0;
+	_shooter = _shellinfo select 1;
+
+	// Mild blur only, from all bullets
+	if (tpw_duck_blurflag==0) then
+		{
+		[] spawn 
+			{
+			tpw_duck_blurflag = 1;
+			_blurfactor = tpw_duck_player * 0.002;
+			_blur = ppEffectCreate ["RadialBlur", 1551];   
+			_blur ppEffectEnable true;   
+			_blur ppEffectAdjust [0,0,0,0];  
+			_blur ppEffectCommit 0;
+			_blur ppEffectAdjust [_blurfactor,_blurfactor,0.05,0.05];  
+			_blur ppEffectCommit 0.1;
+			sleep 0.1;
+			_blur ppEffectAdjust [0,0,0,0];  
+			_blur ppEffectCommit 0.1;
+			sleep 0.1;
+			ppEffectDestroy _blur; 
+			tpw_duck_blurflag = 0;
+			};
+		};	
+		
+	// Full suppression and blur from enemy bullets
+	if (side _shooter getfriend side player < 0.6) then
+		{
+		if (diag_ticktime < tpw_duck_playertime) then
+			{
+			tpw_duck_playershots = tpw_duck_playershots + 1;
+			} else
+			{
+			tpw_duck_playertime = diag_ticktime + random 10;
+			};
+		if (tpw_duck_playershots > 3) then
+			{
+			tpw_duck_playershots = 0;			
+			if (!isnil "tpw_hud_colour") then
+				{
+				tpw_hud_colour = [1,0,0];
+				};
+			if (getfatigue player <0.75) then
+				{
+				player setfatigue 0.75;
+				};
+			if (tpw_duck_blurflag==0) then
+				{
+				tpw_duck_blurflag = 1;
+				_blurfactor = tpw_duck_player * 0.01;
+				_blur = ppEffectCreate ["RadialBlur", 1551];   
+				_blur ppEffectEnable true;   
+				_blur ppEffectAdjust [0,0,0,0];  
+				_blur ppEffectCommit 0;
+				_blur ppEffectAdjust [_blurfactor,_blurfactor,0.05,0.05];  
+				_blur ppEffectCommit 0.2;
+				sleep 1;
+				_blur ppEffectAdjust [0,0,0,0];  
+				_blur ppEffectCommit 0.2;
+				sleep 0.2;
+				ppEffectDestroy _blur; 
+				tpw_duck_blurflag = 0;
+				};	
+			if (!isnil "tpw_hud_colour") then
+				{
+				tpw_hud_colour=tpw_hud_origcol;
+				};
+			};	
+		};
+	};
+
+// EXCLUDE SQUAD
+if (tpw_duck_nosquad == 1) then
+	{
+		{
+		_x setvariable ["tpw_duck_exclude",1];
+		} foreach units group player;
+	};
+
+// ATTACH INVISIBLE SHELL TO ENABLE PLAYER SUPPRESSION
+if (tpw_duck_player > 0) then
+	{
+	tpw_duck_shell = "ebs" createVehicle [0,0,0];
+	tpw_duck_shell addeventhandler ["hitpart",{_this spawn tpw_duck_fnc_player}];
+	tpw_duck_shell attachTo [player, [0,-1.5,2.5]];
+	};
+	
+// MAIN LOOP
+tpw_duck_fnc_mainloop = 
+	{
+	while {true} do
+		{
+		if (tpw_duck_active) then
+			{
+			// Disable player suppression shell if player in vehicle
+			if (tpw_duck_player > 0) then
+				{
+				if (vehicle player == player) then
+					{
+					tpw_duck_shell attachTo [player, [0,-1.5,2.5]];
+					} else
+					{
+					detach tpw_duck_shell;
+					tpw_duck_shell setpos [0,0,1000];
+					};
+				};
+			
+			tpw_duck_units = allunits select {_x getvariable ["tpw_crowd_move",-1] == -1 && {!(["zomb",typeof _x] call bis_fnc_instring)} && {_x getvariable ["tpw_zombie",0] == 0}};
+			for "_i" from 0 to count tpw_duck_units - 1 do	
+				{
+				private _unit = tpw_duck_units select _i;
+				// Fired EH
+				if (_unit getvariable ["tpw_duck",-1] == -1) then
+					{
+					_unit setvariable ["tpw_duck_time",diag_ticktime];
+					_unit setvariable ["tpw_duck_flag",0];
+					_unit setvariable ["tpw_duck",0];
+					_unit addeventhandler ["fired",
+						{
+						if (tpw_duck_check == 0) then {0 = [] spawn tpw_duck_fnc_scan};
+						if ((_this select 1) == "Throw") then {0 = [_this select 0] spawn tpw_duck_fnc_grenade};
+						}];
+					};	
+						
+				// Reset posture after appropriate time
+				if (_unit getvariable "tpw_duck_time" < diag_ticktime && _unit getvariable "tpw_duck_flag" == 1 && {!(lifestate _unit == "INCAPACITATED")}) then
+					{
+					_unit setvariable ["tpw_duck",0];
+					_unit setunitpos "AUTO";
+					};
+				};
+			sleep random 10;
+			};
+		};
+	};
+
+// MAIN SUPPRESSION ROUTINE CALLED AFTER ANY WEAPON FIRED 
+tpw_duck_fnc_scan = 
+	{
+	if !(tpw_duck_active) exitwith {};
+	tpw_duck_check = 1;	
+	
+	sleep 0.2; // allow time for bullet to have passed by units 
+		
+	// Posture changes based on suppression state
+	for "_i" from 0 to count tpw_duck_units - 1 do	
+		{
+		private _unit = tpw_duck_units select _i;
+	
+		if (alive _unit && {_unit getvariable ["tpw_duck_exclude",0] == 0} && {vehicle _unit == _unit} && {_unit != player} && {getSuppression _unit > 0} && {random 1 < tpw_duck_sensitivity} && {!(lifestate _unit == "INCAPACITATED")}) then 
+			{
+			
+			if (_unit distance player < 200) then
+				{
+				tpw_duck_count = tpw_duck_count + 1;
+				if (tpw_duck_count % 10 == 0) then
+					{
+					tpw_core_battletime = diag_ticktime + 60 + random 120; // set battle every 10th suppression
+					};
+				};
+				
+			_unit setvariable ["tpw_duck_flag",1];
+
+			if (asltoagl (eyepos _unit) select 2 > 1.5) then // crouch if standing
+				{
+				_unit setunitpos "MIDDLE";	
+				_unit playmove (tpw_duck_croucharray select (_unit getvariable "tpw_core_weptype"));			
+				};
+			if (random 1 > 0.75 && {asltoagl (eyepos _unit) select 2 < 1.5} && {speed _unit == 0}) then // prone if crouched and stationary
+				{
+				_unit setunitpos "down";
+				_unit playmove (tpw_duck_pronearray select (_unit getvariable "tpw_core_weptype"));
+				};
+
+			// Move to cover
+			/*
+			if !(_unit in units group player) then
+				{
+					{
+					_x enableai "fsm";
+					_x forcespeed -1;
+					if (diag_ticktime > _x getvariable["tpw_movetime",0]) then
+						{
+						_nobj = nearestTerrainObjects [_x,["tree","small tree","bush","rock","house","building","wall"],2,false];
+						_obj = nearestTerrainObjects [_x,["tree","small tree","bush","rock","house","building","wall"],25,false];
+						if (count _nobj == 0 && {count _obj > 0}) then
+							{
+							_x disableai "fsm";
+							_x setvariable["tpw_movetime",diag_ticktime + 10];
+							_x setSpeedMode "full";
+							_x forcespeed 10;
+							_pos = getposasl (selectrandom _obj);
+							_x domove _pos;
+							_x moveto _pos;
+							};
+						};	
+					} foreach units group _unit;
+				};
+			*/	
+
+			// How long til unit can get up again
+			_unit setvariable ["tpw_duck_time",diag_ticktime + random 8];
+			};
+		};
+	sleep random 0.5;
+	tpw_duck_check = 0;	
+	};
+	
+// UNITS RUN AWAY FROM GRENADES	
+tpw_duck_fnc_grenade =
+	{
+	if (tpw_duck_grenaderun == 0) exitwith {};
+	private _thrower = _this select 0;
+	private _grenades = nearestObjects [_thrower,[],5] select {(["grenade",(str (typeof _x))] call BIS_fnc_inString)};
+	if (count _grenades == 0) exitwith {};
+	tpw_core_battletime = diag_ticktime + 60 + random 120;
+	private _grenade = _grenades select 0;
+	waituntil
+		{
+		(getposatl _grenade) select 2 < 0.1 || speed _grenade == 0
+		};
+	private _people = (_grenade nearobjects ["camanbase",25]) - [player];
+		{
+		private _unit = _x;
+		
+		// The closer the unit to the grenade, the more likely to react	
+		if (random 1 < (10/(_x distance _grenade))) then
+			{
+			// Position away from grenade
+			private _dir = [_grenade,_unit] call bis_fnc_dirto;
+			private _pos = position _unit;
+			private _posx = (_pos select 0) + (15 * sin _dir);
+			private _posy = (_pos select 1) +  (15 * cos _dir);
+			[_unit,_posx,_posy] spawn
+				{
+				_unit = _this select 0;
+				_posx = _this select 1;
+				_posy = _this select 2;
+				
+				// Nerf AI to improve response speed	
+				{_unit disableai _x} count ["FSM","TARGET","AUTOTARGET","AUTOCOMBAT","COVER","CHECKVISIBLE","SUPPRESSION"];
+				
+				// Up and run
+				_unit forcespeed 6;
+				_unit domove [_posx,_posy];	
+				//_unit setunitpos "UP";
+				_unit setspeedmode "FULL";
+				
+				sleep 2 + random 3;
+				_unit setunitpos "down";
+				_unit playmove (tpw_duck_pronearray select (_unit getvariable "tpw_core_weptype"));
+				_unit forcespeed -1;
+				
+				// Get back up, restore AI
+				sleep 4 + random 4;
+				_unit setunitpos "auto";
+				{_unit enableai _x} count ["FSM","TARGET","AUTOTARGET","AUTOCOMBAT","COVER","CHECKVISIBLE","SUPPRESSION"];
+				
+				if (_unit in (units group player)) then
+					{
+					{[_x] joinsilent group player} foreach (units group player) - [player];
+					};
+				};
+			};	
+		} foreach _people;
+	};	
+
+// RUN IT
+sleep 5;	
+tpw_duck_check = 0;
+tpw_duck_active = true;
+[] spawn tpw_duck_fnc_mainloop;	
+while {true} do
+	{
+	// dummy loop so script doesn't terminate
+	sleep 10;
+	};
