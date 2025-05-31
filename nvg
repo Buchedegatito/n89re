@@ -1,0 +1,22 @@
+_sunrise = ([] call BIS_fnc_sunriseSunsetTime) select 0;
+_sunset = ([] call BIS_fnc_sunriseSunsetTime) select 1;
+
+while {true} do
+	{
+	if (daytime > _sunrise || daytime < _sunset) then
+		{
+			{
+			if ("NVgoggles" in  assignedItems _x) then {_x unassignItem "NVGoggles"};
+			if ("NVGoggles_OPFOR" in  assignedItems _x) then {_x unassignItem "NVGoggles_OPFOR"};
+			if ("NVGoggles_INDEP" in  assignedItems _x) then {_x unassignItem "NVGoggles_INDEP"};
+			} foreach allunits;
+		} else 
+		{
+			{
+			if side _x == "WEST" then {_x assignItem "NVGoggles"};
+			if side _x == "EAST" then {_x assignItem "NVGoggles_OPFOR"};
+			if side _x == "RESISTANCE" then {_x assignItem "NVGoggles_INDEP"};
+			} foreach allunits;
+		};	
+	sleep 30;	
+	};
