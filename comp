@@ -1,0 +1,65 @@
+/* 
+TPW COMPRESS - Simulates compression of loud sounds by muting nearby gunfire
+Author: tpw 
+Date: 20181103
+Version: 1.00
+Requires: CBA A3
+Compatibility: SP, MP client
+
+
+Disclaimer: Feel free to use and modify this code, on the proviso that you post back changes and improvements so that everyone can benefit from them, and acknowledge the original author (tpw) in any derivative works.     
+
+To use: 
+1 - Save this script into your mission directory as eg tpw_compress.sqf
+2 - Call it with 0 = [0.8,0,2,0.5] execvm "tpw_compress.sqf"; where 0.2 = muting level ( 0 = no muting, 1 = complete silence, ), 0 = time (sec) for full muting (0 = immediate),2 = time (sec) for volume to remain muted, 0.5 = time (sec) for full unmuting (0 = immediate) .
+
+THIS SCRIPT WON'T RUN ON DEDICATED SERVERS.
+*/
+
+if (isDedicated) exitWith {};
+if (count _this < 4) exitwith {player sidechat "TPW COMPRESS incorrect/no config, exiting."};
+WaitUntil {!isNull FindDisplay 46};
+
+// READ IN CONFIGURATION VALUES
+tpw_compress_version = "1.00"; // Version string
+tpw_compress_level = 1 - (_this select 0); // muting factor ( 0 = no muting, 1 = complete silence)
+tpw_compress_attack = _this select 1; // time (sec) for full muting (0 = immediate) 
+tpw_compress_hold = _this select 2; // time (sec) for volume to remain muted
+tpw_compress_release = _this select 3; //  time (sec) for full unmuting (0 = immediate) 
+tpw_compress_active = true; // Global enable/disabled
+if (tpw_compress_level > 1) then {tpw_compress_factor = 1};
+ 
+tpw_compress_flag = false;
+tpw_compress_unmutetime = 0;
+
+player addeventhandler ["firednear",
+	{
+	if (tpw_compress_active) then 
+		{
+		tpw_compress_attack fadesound tpw_compress_level;
+		tpw_compress_unmutetime = time + tpw_compress_hold;
+		tpw_compress_flag = true;
+		};
+	}];
+	
+player addeventhandler ["fired",
+	{
+	if (tpw_compress_active) then 
+		{
+		tpw_compress_attack fadesound tpw_compress_level;
+		tpw_compress_unmutetime = time + tpw_compress_hold;
+		tpw_compress_flag = true;
+		};
+	}];
+
+// Unmute loop	
+while {true} do
+	{
+	if (tpw_compress_flag && {time > tpw_compress_unmutetime}) then
+		{
+		tpw_compress_release fadesound 1;
+		tpw_compress_flag = false;
+		};
+	sleep tpw_compress_hold;
+	};
+	
