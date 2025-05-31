@@ -1,0 +1,127 @@
+/* 
+TPW REPAIR - Automatic repair of damaged player vehicle at fuel stations
+Author: tpw 
+Date: 20200321
+Version: 1.02
+Requires: CBA A3, tpw_core.sqf, tpw_sounds.pbo
+Compatibility: SP, MP client
+Thanks: heyvern69
+
+Disclaimer: Feel free to use and modify this code, on the proviso that you post back changes and improvements so that everyone can benefit from them, and acknowledge the original author (tpw) in any derivative works.     
+
+To use: 
+1 - Save this script into your mission directory as eg tpw_radio.sqf
+2 - Call it with 0 = [1,5 ] execvm "tpw_repair.sqf"; where 1 = mechanical noise during repair (0 = no noise), 5 = maximum time for repairs to be completed.
+
+THIS SCRIPT WON'T RUN ON DEDICATED SERVERS.
+*/
+
+if (isDedicated) exitWith {};
+if (count _this < 2) exitwith {player sidechat "TPW REPAIR incorrect/no config, exiting."};
+WaitUntil {!isNull FindDisplay 46};
+
+// READ IN CONFIGURATION VALUES
+tpw_repair_version = "1.02"; // Version string
+tpw_repair_noise = _this select 0; // Random mechanical noises whilst repairs are underway
+tpw_repair_time = _this select 1; // Repair time (min). It will take up to this long to complete repairs. Minimum time is 30 seconds regardless of this value. Maximum is 120 minutes.
+tpw_repair_active = true; // Global enable/disabled
+if (tpw_repair_time > 120) then {tpw_repair_time = 120};
+
+
+// SOUNDS
+tpw_repair_fnc_sound =
+	{
+	private _car = _this select 0;
+	while {tpw_repair} do
+		{
+		private _clip = format ["TPW_SOUNDS\sounds\mechanic\mechanic%1.ogg",floor random 10];
+		playsound3d [_clip,_car,false,getposasl _car,7.5,1,50];
+		sleep random 10;
+		};
+	};
+	
+	
+// MAIN LOOP
+sleep 10;
+while {true} do
+	{
+	if (tpw_repair_active) then
+		{
+		_repair = false;	
+		// Player vehicle near a fuel station?
+		if (!(vehicle player == player)) then
+			{
+			if (count (nearestterrainObjects [player,["FUELSTATION"],10,false]) > 0) then {_repair = true}; 
+			//if (count (player nearentities [["car"],10] select {["repair",typeof _x] call BIS_fnc_inString}) > 0) then {_repair = true};
+			};
+		if(_repair) then
+			{
+			private _time = 30 + (30 * tpw_repair_time) + (random(30 * tpw_repair_time));
+			private _car = vehicle player;
+			// Car damaged, stationary?
+			if (damage _car > 0 && {speed _car == 0}) then
+				{
+				// Mechanic under car
+				private _sqname = creategroup [civilian,true];
+				private _civ = _sqname createUnit ["c_man_utilityworker_01_f",[0,0,0], [], 0, "FORM"]; 
+				_civ disableai "MOVE";
+				_civ disableai "ANIM";
+				_civ disableAI "TARGET";
+				_civ disableAI "FSM";
+				_civ disableAI "AUTOTARGET";
+				_civ disableAI "AIMINGERROR";
+				_civ disableAI "SUPPRESSION"; 
+				_civ disableAI "CHECKVISIBLE"; 
+				_civ disableAI "COVER"; 
+				_civ disableAI "AUTOCOMBAT";
+				_civ setunitpos "UP";
+				_civ setspeedmode "LIMITED";
+				_civ disableConversation true;
+				_civ setSpeaker "NoVoice";		
+				_civ switchmove "unconsciousrevivearms_b";
+				_civ setposasl (getpos _car);
+	
+				// Repair noise
+				if (tpw_repair_noise == 1) then
+					{
+					[_car] spawn tpw_repair_fnc_sound;
+					};
+
+				// Repairs
+				player sidechat "Repairing...";
+				private _inc =  (damage _car) / 10;
+				private _complete = 0;	
+				for "_i" from 1 to 10 do
+					{
+					tpw_repair= true;
+					if (speed _car == 0) then
+						{
+						_car setdamage  ((damage _car) - _inc);
+						_complete = _complete + 1;
+						sleep (_time/10);
+						};
+					};
+				tpw_repair = false;	
+				deletevehicle _civ;	
+				if (_complete == 10) then
+					{				
+					player sidechat "Repairs complete";
+					sleep 2;
+					hintsilent "";
+					} else
+					{
+					player sidechat "Repairs incomplete";
+					sleep 2;
+					hintsilent "";
+					}
+				};
+			};
+		};		
+	sleep 5;
+	};
+
+while {true} do
+	{
+	// dummy loop so script doesn't terminate
+	sleep 10;
+	};		
