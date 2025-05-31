@@ -1,0 +1,172 @@
+/* 
+TPW FIRE - Ambient fire
+Author: tpw
+Date: 20180403
+Version: 1.01
+Requires: CBA A3, tpw_core.sqf
+Compatibility: SP
+
+Disclaimer: Feel free to use and modify this code, on the proviso that you post back changes and improvements so that everyone can benefit from them, and acknowledge the original author (tpw) in any derivative works.     
+
+To use: 
+1 - Save this script into your mission directory as eg tpw_fire.sqf
+2 - Call it with 0 = [100,0.3,8,["metalbarrel","garbagebarrel","fire"],25,[1,0.2,0]] execvm "tpw_fire.sqf"; where 100 = radius (m) around player to scan for fires, 0.3 = fire intensity (0-1),8 = maximum fires around player at any given time, ["metalbarrel","garbagebarrel","fire"] = array of strings to match with "HIDE" terrain objects, 25 = only one fire in this radius (m) - use to prevent multiple adjacent barrels on fire for example, [1,0.2,0] = fire colour [r,g,b]   
+
+THIS SCRIPT WON'T RUN ON DEDICATED SERVERS.
+*/
+
+if (isDedicated) exitWith {};
+if (count _this < 6) exitwith {player sidechat "TPW FIRE incorrect/no config, exiting."};
+WaitUntil {!isNull FindDisplay 46};
+WaitUntil {!isnil "tpw_core_sunangle"};
+
+// VARIABLES
+tpw_fire_version = "1.01"; // Version string
+tpw_fire_radius = _this select 0; // radius (m) around player to scan for fires
+tpw_fire_intensity = _this select 1; // fire intensity (0-1)
+tpw_fire_maxfires = _this select 2; // maximum fires around player at any given time
+tpw_fire_types = _this select 3; // array of strings to match with "HIDE" terrain objects
+tpw_fire_exclude = _this select 4; // only one fire in this radius (m) - use to prevent multiple adjacent barrels on fire for example
+tpw_fire_colour = _this select 5; // fire colour [r,g,b]
+tpw_fire_lastpos = [0,0,0];
+tpw_fire_firearray = [];
+tpw_fire_sites = [];
+tpw_fire_lightoffradius = 30;
+tpw_fire_active = true;
+tpw_fire_houses = [];
+
+// DISABLE NEARBY LIGHTS - Killzone Kid
+tpw_fire_fnc_lightsoff =
+	{
+		{
+		for "_i" from 0 to count getallhitpointsdamage _x - 1 do
+			{
+			_x sethitindex [_i, 0.97];
+			};
+		} foreach (nearestObjects [_this select 0,tpw_core_habitable + ["lamps_base_f","powerlines_base_f","powerlines_small_base_f"],tpw_fire_lightoffradius])
+	};
+
+
+// SPAWN FIRE
+tpw_fire_fnc_create = 
+	{
+	private["_int","_highpos","_lowpos","_pos","_firetype","_smoketype","_hazetype","_light","_int","_att","_flames","_smoke","_haze","_time","_nearflag","_surf"];
+	
+	// Dont't bother if too many fires around
+	if (count tpw_fire_firearray >= tpw_fire_maxfires) exitwith {};
+	
+	// Parameters
+	_firetype = "smallfirefplace";
+	_smoketype = "laptopsmoke";
+	_hazetype = "refract";
+	_int = tpw_fire_intensity + random tpw_fire_intensity; // intensity
+	_att = [0,0,0,2];// attenuation
+	
+	// Spawn position on top of burnable object
+	_highpos = _this select 0 vectoradd [0,0,2];
+	_lowpos = _this select 0 vectoradd [0,0,-2];
+	_surf = lineintersectssurfaces [_highpos,_lowpos,objnull,objnull,true,1,"FIRE","GEOM"];	
+	_pos = asltoatl ((_surf select 0) select 0) vectoradd [0,0,-0.1];
+	
+	// Don't bother if already nearby fire
+	_nearflag = false;
+		{
+		if ((_pos distance  _x) > 0.25 && {(_pos distance _x) < tpw_fire_exclude}) then
+			{
+			_nearflag = true;
+			};
+		} foreach tpw_fire_firearray;
+	if (_nearflag) exitwith {};
+
+	// Flames
+	_flames = "#particlesource" createvehiclelocal _pos;
+	_flames setparticleclass _firetype;
+	_flames setposatl _pos;
+	
+	// Smoke
+	_smoke = "#particlesource" createvehiclelocal _pos;
+	_smoke setparticleclass _smoketype;
+	_smoke setposatl _pos;
+
+	// Haze
+	_haze = "#particlesource" createvehiclelocal _pos;
+	_haze setparticleclass _hazetype;
+	_haze setposatl _pos;		
+
+	// Lightsource
+	_light = createvehicle ["#lightpoint", _pos, [], 0, "can_collide"];
+	_light setposatl _pos;
+	_light setlightcolor tpw_fire_colour;
+	_light setlightintensity _int;
+	_light setlightattenuation _att;
+	tpw_fire_firearray pushback _light;
+	
+	// Turn off nearby streetlights
+	[_pos] call tpw_fire_fnc_lightsoff;
+
+	// Flickering
+	_time = time + 17; // lifetime of fire
+	_sound = "TPW_SOUNDS\sounds\fire\fire.ogg";	
+	playsound3d [_sound,_flames,false,getposasl _flames,1,1,25];
+	waituntil 
+		{
+		_flames setposatl (_pos vectoradd [(random 0.1) - 0.05,(random 0.1) - 0.05,(random 0.1) - 0.05]);
+		_light setlightbrightness (_int + (random _int/3));
+		sleep random .25;
+		time > _time
+		};
+	deletevehicle _flames;
+	deletevehicle _light;
+	deletevehicle _smoke;
+	deletevehicle _haze;
+	tpw_fire_firearray deleteat (tpw_fire_firearray find _light);
+	};
+
+// SCREEN POTENTIAL FIRE SITES
+tpw_fire_fnc_screen = 
+	{
+	private _site = _this select 0;
+		{
+		if ([_x,str _site] call bis_fnc_instring) exitwith
+			{
+			tpw_fire_sites pushback _site;
+			};
+		} foreach tpw_fire_types;	
+	};
+	
+// SEARCH FOR PLACES TO LIGHT FIRES	
+tpw_fire_fnc_scan = 
+	{
+	while {true} do
+		{
+		// If active, and after dark
+		if (tpw_fire_active && tpw_core_sunangle < 0) then
+			{
+			// Scan for potential fire sites if player has moved far enough
+			if (player distance tpw_fire_lastpos > tpw_fire_radius / 2) then
+				{
+				tpw_fire_lastpos = position player;
+				tpw_fire_sites = [];
+				private _sites = (nearestterrainobjects [position player, ["HIDE"],tpw_fire_radius]);
+					{
+					[_x] call tpw_fire_fnc_screen;
+					} foreach _sites;
+				};
+			tpw_fire_sites = ([tpw_fire_sites] call tpw_core_fnc_arraysort) select [0,tpw_fire_maxfires]; // sort by closeness to player	
+				
+			// Spawn fire at each site 
+				{
+				[getposasl _x] spawn tpw_fire_fnc_create;
+				sleep random 0.1;
+				} foreach tpw_fire_sites;	
+			};
+		sleep 15;	
+		};
+	};	
+sleep 10;
+[] spawn tpw_fire_fnc_scan;
+while {true} do
+	{
+	// dummy loop so script doesn't terminate
+	sleep 10;
+	};
