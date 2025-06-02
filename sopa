@@ -1,9 +1,10 @@
-if (!isServer) exitWith {};
+// CONFIGURACIÓN INICIAL Y COMPROBACIONES
+if (isDedicated) exitWith {};
 WaitUntil {!isNull FindDisplay 46};
 if (count _this < 11) exitwith {player sidechat "TPW soap incorrect/no config, exiting."};
 
 // READ IN CONFIGURATION VALUES
-tpw_soap_version = "1.76"; // Version string
+tpw_soap_version = "1.76_SYNC"; // Version string
 tpw_soap_ambientvolume = _this select 0; // Ambient sounds volume
 tpw_soap_musicvolume = _this select 1; // Music volume
 tpw_soap_azanvolume = _this select 2; // Azan volume
@@ -15,7 +16,13 @@ tpw_soap_usersounds = _this select 6; // Number of user supplied sounds
 tpw_soap_region = _this select 7; // 0 = autoselect based on region, 1 = force Greek, 2 = force Mid East, 3 = force Fijian, 4 = force French, 5= force Russian, 6 = force German,7 = force Finnish, 8 = force Scottish
 tpw_soap_trafficmult = _this select 8;  // 0 = no traffic, 20 = very loud
 tpw_soap_chainsawvolume = _this select 9; // Chainsaw volume
-tpw_soap_sirenvolume = _this select 10; // Chainsaw volume
+tpw_soap_sirenvolume = _this select 10; // Siren volume
+
+// VARIABLES DE SINCRONIZACIÓN REALES
+tpw_soap_master_client = false; // Será true solo para un cliente que controlará todos los sonidos
+tpw_soap_sync_initialized = false; // Flag para la inicialización de sincronización
+tpw_soap_sync_seed = 0; // Semilla para sincronización de números aleatorios
+tpw_soap_master_id = 0; // ID del cliente maestro
 
 // OTHER VARS
 tpw_soap_active = true; // Global enable/disabled
@@ -56,1031 +63,1251 @@ tpw_soap_nextcry = 0;
 tpw_soap_carmusic = [];
 tpw_soap_songs = 0;
 tpw_soap_regions = tpw_soap_region;
-tpw_soap_city = False;
+tpw_soap_city = false;
+tpw_soap_nexttrain = 0;
+tpw_soap_last_sync = 0;
+tpw_soap_event_queue = [];
+tpw_soap_last_event_time = 0;
 
 // SUNRISE AND SUNSET
 _riseset = [] call BIS_fnc_sunriseSunsetTime;
 tpw_soap_sunrise = _riseset select 0;
 tpw_soap_sunset = _riseset select 1;
 
-// AUTO DETECT REGION
-if (tpw_soap_regions isequalto [0]) then
-	{
-	// Default to Polyglot
-	tpw_soap_regions = [1,2,3,4,5,6,7,8];
-	
-	// Greece
-	if  (tolower worldname in ["altis","stratis","bozcaada","hebontes","rof_ammoulliani","sehreno"]) then 
-		{
-		tpw_soap_regions = [1];
-		};
-	
-	// Mideast	
-	if (tolower worldname in [
-	"mcn_aliabad",
-	"bmfayshkhabur",
-	"clafghan",
-	"fata",
-	"hellskitchen",
-	"hellskitchens",
-	"mcn_hazarkot",
-	"praa_av",
-	"reshmaan",
-	"shapur_baf",
-	"takistan",
-	"torabora",
-	"tup_qom",
-	"zargabad",
-	"pja306",
-	"tunba",
-	"mountains_acr",
-	"kunduz",
-	"pja310",
-	"pja308",
-	"tropica",
-	"pja307",
-	"wgl_palms",
-	"fallujah",
-	"dya",
-	"kidal",
-	"pja319",
-	"lythium",
-	"huntersvalley",
-	"farkhar",
-	"altiplano",
-	"mog",
-	"tem_anizay",
-	"cup_kunduz",
-	"khoramshahr",
-	"afghanistan",
-	"uzbin",
-	"swu_public_salman_map",
-	"cup_kunduz",
-	"rut_mandol",
-	"sefrouramal",
-	"bastek",
-	"bala_murghab",
-	"northtakistan",
-	"bala_murghab_summer",
-	"bala_murghab_winter",
-	"farabad",
-	"albasrah",
-	"swu_public_afghan_map",
-	"juju_sahatra"
-	]) then	
-		{
-		tpw_soap_regions = [2]
-		};
-
-	// Tropical	/ Pacific / African
-	if  (tolower worldname in 
-	["tanoa",
-	"mak_jungle",
-	"pja305",
-	"tigeria",
-	"tigeria_se",
-	"plr_mana",
-	"sara",
-	"saralite",
-	"sara_dbe1",
-	"porto",
-	"intro",
-	"pja312",
-	"tanoa",
-	"bsoc_brasil",
-	"lingor3",
-	"isladuala3",
-	"dingor",
-	"prei_khmaoch_luong",
-	"us101_cao_bang",
-	"dakrong",
-	"uns_dong_ha",
-	"rungsat",
-	"csj_sea",
-	"csj_lowlands",
-	"phu_bai",
-	"uns_ptv",
-	"rockwall",
-	"pulau",
-	"seangola",
-	"kapaulio",
-	"sfp_wamako",
-	"126map",
-	"tem_kujari",
-	"rhspkl",
-	"cam_lao_nam",
-	"ctm_front",
-	"vn_khe_sanh",
-	"bozoum",
-	"edaly_map_alpha",
-	"juju_kalahari",
-	"swu_public_rhode_map",
-    "vn_the_bra",
-	"umb_colombia",
-	"islapera"
-	]) then 
-		{
-		tpw_soap_regions = [3];
-		};
-	
-	// France	
-	if  (tolower worldname in [
-	"malden",
-	"tembelan",
-	"porquerolles",
-	"pianosa_aut",
-	"montellav3",
-	"juju_orglandes",
-	"spe_normandy"
-	]) then 
-		{
-		tpw_soap_regions = [4];
-		};	
-
-	// Eastern Europe	
-	if (tolower worldname in [
-	"caribou",
-	"namalsk",
-	"bush_island_51",
-	"chernarus",
-	"chernarus_summer",
-	"chernarusredux",
-	"fdf_isle1_a",
-	"woodland_acr",
-	"bootcamp_acr",
-	"thirsk",
-	"thirskw",
-	"utes",
-	"gsep_mosch",
-	"gsep_zernovo",
-	"anim_helvantis_v2",
-	"colleville",
-	"staszow",
-	"baranow",
-	"panovo",
-	"ivachev",
-	"pja314",
-	"beketov",
-	"blud_vidda",
-	"sennoe",
-	"chernarus_2035",
-	"vis",
-	"atmt_trava",
-	"napfwinter",
-	"chernarus_winter",
-	"utes_winter",
-	"arctic",
-	"enoch",
-	"cup_chernarus_a3",
-	"jns_tria",
-	"stozec",
-	"kaska",
-	"elovyi",
-	"zdanice",
-	"chernarusplus",
-	"brf_sumava",
-	"lubyanka",
-	"swu_public_novogorsk_map",
-	"vtf_lybor"
-	]) then
-		{
-		tpw_soap_regions = [5];
-		};
-
-	// Germany
-	if (tolower worldname in [	
-	"mbg_celle2",	
-	"wl_rosche",
-	"xcam_taunus",
-	"gm_weferlingen_summer",
-	"gm_weferlingen_winter",
-	"tem_cham",
-	"tem_chamw",
-	"esseker"
-	]) then
-		{
-		tpw_soap_regions = [6];
-		};		
-	
-	// Finland
-	if (tolower worldname in [
-	"tem_summa",
-	"tem_suursaariv",
-	"tem_chernarus",
-	"tem_ihantala",
-	"tem_vinjesvingenc",
-	"vt7",
-	"ruha",
-	"hellanmaa",
-	"vkn_halsoy_terrain",
-	"maksniemi",
-	"jumo"
-	]) then
-		{
-		tpw_soap_regions = [7];
-		};		
-	
-	// Scotland
-	if (tolower worldname in [
-	"oski_corran",
-	"rof_mok",
-	"oski_ire"
-	]) then
-		{
-		tpw_soap_regions = [8];
-		};		
-	};		
-	
-// ADJUST TRAFFIC NOISE MULTIPLIER PER MAP
-private _maps = ["altis","stratis","malden","lythium","tanoa","prei_khmaoch_luong","dya","chernarusredux","tem_anizay",	"gm_weferlingen_summer","gm_weferlingen_winter","kidal","chernarusplus"];
-private _adj = [1,1.5,1.5,1.5,1.2,0.2,0.5,0.1,0.3,2,1,0.1,1];
-if (tolower worldname in _maps) then
-	{
-	tpw_soap_mapfactor = (_adj select (_maps find tolower worldname)); 	
-	} 
-	else
-	{
-	tpw_soap_mapfactor = 1; 	
-	};
-	
-// IS PLAYER IN A HOUSE?		
-tpw_soap_fnc_indoors = 
-	{
-	private ["_pos","_highpos","_return"];
-	_pos = eyepos player;
-	_highpos = _pos vectoradd [0,0,10];
-	if (lineintersects [_pos,_highpos]) then
-		{
-		_return = true;
-		}
-		else
-		{
-		_return = false;
-		};
-	_return	
-	};
-	
-// NEAREST BUILDING
-tpw_soap_fnc_nearestbuilding =
-	{	
-	private ["_return"];
-	_return = (nearestObject [player, "House"]) distance player; // will also return walls
-	_return
-	};
-	
-// MAIN LOOP
-tpw_soap_fnc_mainloop = 
-	{
-	
-	while {true} do
-		{
-		// Scan houses only if fewer than maximum sounds are playing 
-		if ((tpw_soap_active) && 
-		{tpw_soap_soundsplaying < tpw_soap_maxsounds} && 
-		{speed player <20} && 
-		{!([] call tpw_soap_fnc_indoors)}) then
-			{
-			tpw_soap_nearhouses = [];
-			0 = [] call tpw_soap_fnc_housescan;
-			};
-		if (tpw_core_battle) then
-			{
-			tpw_soap_active = false;
-			} else
-			{
-			tpw_soap_active = true;
-			};
-		sleep 5.11;
-		};
-	};
-	
-// AZAN LOOP
-tpw_soap_fnc_azanloop = 
-	{
-	tpw_soap_azanflag = 0;
-	while {true} do
-		{
-		if ((tpw_soap_active) &&
-		{tpw_soap_azanflag == 0} &&
-		{(daytime > tpw_soap_sunrise - 1.25 && daytime < tpw_soap_sunrise - 1 ) || 
-		(daytime > tpw_soap_sunrise && daytime < tpw_soap_sunrise + 0.25) || 
-		(daytime > 11.75 && daytime < 12) || 
-		(daytime > 14 && daytime < 14.25) ||
-		(daytime > tpw_soap_sunset - 2 && daytime < tpw_soap_sunset - 1.75) || 
-		(daytime > tpw_soap_sunset && daytime < tpw_soap_sunset + 0.25)}) then
-			{
-			0 = [] call tpw_soap_fnc_mosquescan;
-			};
-		sleep 5.11;
-		};
-	};
-	
-// HOUSE SCANNING 
-tpw_soap_fnc_housescan =
-	{
-	private ["_nearhouses","_house","_i"];
-	tpw_soap_region = selectrandom tpw_soap_regions;
-
-	// Is player in built up city?
-	tpw_soap_city = False;
-	if (count nearestLocations [position player, ["NameCity","NameCityCapital"], 500] > 0 && {count ([100] call tpw_core_fnc_screenhouses) > 20}) then  
-		{tpw_soap_city = True}; // only have siren ambience if in built up city areas
-	
-	// Region - can be changed on the fly
-	if (tpw_soap_region == 1) then
-		{
-		tpw_soap_sounds = 39;
-		tpw_soap_songs = 9;
-		tpw_soap_path = "TPW_SOUNDS\sounds\greek\";
-		tpw_soap_soundlength = tpw_soap_greeksoundlength;
-		tpw_soap_songlength = tpw_soap_greeksonglength;
-		tpw_soap_musicfactor = 3.5; // Slightly louder Greek music
-		tpw_soap_kidfactor = 0.75; 
-		tpw_soap_soundfactor=1;
-		tpw_soap_carmusic = "greekmusic";
-		};
-		
-	if (tpw_soap_region == 2) then
-		{
-		tpw_soap_sounds = 22;
-		tpw_soap_songs = 20;
-		tpw_soap_path = "TPW_SOUNDS\sounds\mideast\";
-		tpw_soap_soundlength = tpw_soap_mideastsoundlength;
-		tpw_soap_songlength = tpw_soap_mideastsonglength;
-		tpw_soap_musicfactor = 1.5;
-		tpw_soap_kidfactor = 0.75;
-		tpw_soap_soundfactor = 1.1;
-		tpw_soap_carmusic = "mideastmusic";
-		}; 	
-
-	if (tpw_soap_region == 3) then
-		{
-		tpw_soap_sounds = 25;
-		tpw_soap_songs = 11;
-		tpw_soap_path = "TPW_SOUNDS\sounds\fiji\";
-		tpw_soap_soundlength = tpw_soap_fijisoundlength;
-		tpw_soap_songlength = tpw_soap_fijisonglength;
-		tpw_soap_musicfactor = 3;
-		tpw_soap_kidfactor = 1.25;
-		tpw_soap_soundfactor = 1;
-		tpw_soap_carmusic = "fijimusic";
-		}; 	
-
-	if (tpw_soap_region == 4) then
-		{
-		tpw_soap_sounds = 29;
-		tpw_soap_songs = 12;
-		tpw_soap_path = "TPW_SOUNDS\sounds\france\";
-		tpw_soap_soundlength = tpw_soap_francesoundlength;
-		tpw_soap_songlength = tpw_soap_francesonglength;
-		tpw_soap_musicfactor = 0.5;
-		tpw_soap_kidfactor = 0.75;
-		tpw_soap_soundfactor= 1.3;
-		tpw_soap_carmusic = "frenchmusic";		
-		}; 	
-
-	if (tpw_soap_region == 5) then
-		{
-		tpw_soap_sounds = 29;
-		tpw_soap_songs = 8;
-		tpw_soap_path = "TPW_SOUNDS\sounds\russia\";
-		tpw_soap_soundlength = tpw_soap_russiasoundlength;
-		tpw_soap_songlength = tpw_soap_russiasonglength;
-		tpw_soap_musicfactor = 1.5;
-		tpw_soap_kidfactor = 0.75;
-		tpw_soap_soundfactor = 1.1;
-		tpw_soap_carmusic = "russianmusic";
-		};	
-		
-	if (tpw_soap_region == 6) then
-		{
-		tpw_soap_sounds = 31;
-		tpw_soap_songs = 18;
-		tpw_soap_path = "TPW_SOUNDS\sounds\german\";
-		tpw_soap_soundlength = tpw_soap_germansoundlength;
-		tpw_soap_songlength = tpw_soap_germansonglength;
-		tpw_soap_musicfactor = 3;
-		tpw_soap_kidfactor = 0.5;
-		tpw_soap_soundfactor = 1.4;
-		tpw_soap_carmusic = "germanmusic";
-		};		
-
-	if (tpw_soap_region == 7) then
-		{
-		tpw_soap_sounds = 21;
-		tpw_soap_songs = 13;
-		tpw_soap_path = "TPW_SOUNDS\sounds\finnish\";
-		tpw_soap_soundlength = tpw_soap_finnishsoundlength;
-		tpw_soap_songlength = tpw_soap_finnishsonglength;
-		tpw_soap_musicfactor = 3;
-		tpw_soap_kidfactor = 0.5;
-		tpw_soap_soundfactor = 2.4;
-		tpw_soap_carmusic = "finnishmusic";
-		};	
-
-	if (tpw_soap_region == 8) then
-		{
-		tpw_soap_sounds = 53;
-		tpw_soap_songs = 16;
-		tpw_soap_path = "TPW_SOUNDS\sounds\scottish\";
-		tpw_soap_soundlength = tpw_soap_scottishsoundlength;
-		tpw_soap_songlength = tpw_soap_scottishsonglength;
-		tpw_soap_musicfactor = 3;
-		tpw_soap_kidfactor = 1;
-		tpw_soap_soundfactor = 1;
-		tpw_soap_carmusic =  "scottishmusic";
-		};	
-		
-	// Adjust volume & chance of spawning based on time of day
-	tpw_soap_soundvolmult =  [0,0,0,0,0,0.2,0.4,0.6,0.8,1,1.0,1,1.2,1.2,1.2,1.2,1,1,0.9,0.8,0.6,0.3,0.2,0.1,0] select (round daytime);
-	tpw_soap_musicvolmult =  [0,0,0,0,0,0,0,0.3,0.4,0.6,0.8,0.9,1,1,1,1,1,1,1,1,1,0.8,0.4,0.2,0,0] select (round daytime);
-
-	// Scan for habitable houses 
-	_nearhouses = [tpw_soap_radius] call tpw_core_fnc_screenhouses;
-	tpw_soap_nearhouses = _nearhouses select {damage _x == 0};
-
-	
-	// Loop through nearest houses, find first available
-	for "_i" from 0 to (count tpw_soap_nearhouses - 1) do
-		{
-		_house = tpw_soap_nearhouses select _i;
-		
-		// Play environmental ambience if not already doing so
-		if (
-		(_house getvariable ["tpw_soap_ambienceflag",0] == 0) &&
-		{_house distance player  > 5} &&
-		{random 1 < tpw_soap_soundvolmult} &&
-		{tpw_soap_soundsplaying < tpw_soap_maxsounds}
-		) then 
-			{
-			tpw_soap_soundsplaying = tpw_soap_soundsplaying + 1;
-			_house setvariable ["tpw_soap_ambienceflag",1,true];
-			[_house] call tpw_soap_fnc_ambientsounds; 
-			};
-		
-		// Occasionally play music if not already doing so
-		if (
-		(_house getvariable ["tpw_soap_musicflag",0] == 0)  && 
-		{_house distance player  > 5} &&
-		{random 50 < (1 * tpw_soap_musicvolmult)} &&
-		{tpw_soap_songsplaying < tpw_soap_maxsongs}
-		) then 
-			{
-			tpw_soap_songsplaying = tpw_soap_songsplaying + 1;
-			_house setvariable ["tpw_soap_musicflag",1,true];
-			[_house] call tpw_soap_fnc_ambientmusic; 
-			};	
-			
-		// Occasional construction noises
-		if (tpw_soap_constructionplaying < 3 && {daytime > tpw_soap_sunrise && daytime < tpw_soap_sunset}  && {_house distance player  > 5} ) then
-			{
-			_house setvariable ["tpw_soap_constructionflag",1,true];
-			tpw_soap_constructionplaying = tpw_soap_constructionplaying + 1;
-			[_house] call tpw_soap_fnc_constructionsounds; 
-			};
-		};
-	};
-	
-// MOSQUE SCANNING	
-tpw_soap_fnc_mosquescan =
-	{
-	private ["_nearhouses","_nearmosques","_mosque","_i","_playflag"];
-	// Scan for habitable houses - which can include mosques
-	
-	_nearhouses = [250] call tpw_core_fnc_screenhouses;
-	_nearmosques = [];
-	
-	// Grab nearest mosques - but only want one playing at a given time
-	_playflag = 0;
-	for "_i" from 0 to (count _nearhouses - 1) do
-		{
-		_mosque = _nearhouses select _i;
-		if (["osque",str typeof _mosque] call BIS_fnc_inString) then 
-			{
-			_nearmosques set [count _nearmosques,_mosque];
-			};
-		};
-	_nearmosques = [_nearmosques,[],{player distance _x},"ASCEND"] call BIS_fnc_sortBy;
-	
-	if ((count _nearmosques > 0) && {_mosque getvariable ["tpw_soap_azanflag",0] == 0}) then
-		{
-		_mosque = _nearmosques select 0;
-		[_mosque] call tpw_soap_fnc_azanplay; 
-		};
-	};	
-
-// PLAY MUSIC FROM HOUSES
-tpw_soap_fnc_ambientmusic =
-	{
-	private _house = _this select 0;
-	[_house] spawn	
-		{
-		private ["_house","_sel","_len","_finish","_clip","_pos","_pitch","_atten","_vol"];
-		sleep random 3;
-		_house = _this select 0;
-		_pitch = 1;
-		_pos = getposasl _house;
-		_atten = tpw_soap_attenuation + random tpw_soap_attenuation;
-		_vol = tpw_soap_volume * tpw_soap_musicvolume * tpw_soap_musicvolmult * tpw_soap_musicfactor * 0.75;
-		
-		// Music
-		if (count tpw_soap_songplayed >= tpw_soap_songs) then
-			{
-			tpw_soap_songplayed = [];
-			};
-		waituntil
-			{
-			_sel = floor (random tpw_soap_songs);
-			!(_sel in tpw_soap_songplayed) 
-			};
-		tpw_soap_songplayed pushback _sel;
-		_clip = format ["%1s%2.ogg",tpw_soap_path,(_sel + 1)];	
-		_len = tpw_soap_songlength select _sel;
-			
-		// Play user song from @TPW_MODS\music
-		if ((tpw_soap_usermusic >0) && {random 10 < 5}) then
-			{
-			_clip = format ["@TPW_MODS\music\%1.ogg",(floor random tpw_soap_usermusic) + 1];
-			_len = 180;
-			};
-		_finish = diag_ticktime + _len - 5;
-		_house setvariable ["tpw_soap_musicflag",_finish,true];
-		[_clip,_house,false,_pos,_vol,_pitch,_atten] remoteExec ["playSound3D", 0];
-		waituntil
-			{
-			sleep 5.11;
-			(diag_ticktime > _house getvariable "tpw_soap_musicflag");
-			};	
-		_house setvariable ["tpw_soap_musicflag",0,true];
-		tpw_soap_songsplaying = tpw_soap_songsplaying - 1;
-		};
-	};	
-	
-// PLAY ENVIROMENTAL AMBIENCE IN HOUSES
-tpw_soap_fnc_ambientsounds =
-	{
-	private _house = _this select 0;
-	[_house] spawn	
-		{
-		private ["_house","_sel","_len","_finish","_clip","_pos","_pitch","_atten","_vol"];
-		sleep random 3;
-		_house = _this select 0;
-		_pitch = 0.95 + random 0.1;
-		_pos = getposasl _house;
-		_atten = tpw_soap_attenuation + random tpw_soap_attenuation;
-		_vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * tpw_soap_soundfactor;
-		
-		// Inbuilt SFX
-		if (count tpw_soap_soundplayed >=tpw_soap_sounds) then
-			{
-			tpw_soap_soundplayed = [];
-			};
-		waituntil
-			{
-			_sel = floor (random tpw_soap_sounds);
-			!(_sel in tpw_soap_soundplayed) 
-			};
-		tpw_soap_soundplayed pushback _sel;
-		_clip = format ["%1%2.ogg",tpw_soap_path,(_sel + 1)];	
-		_len = tpw_soap_soundlength select _sel;
-
-		// User SFX
-		if ((tpw_soap_usersounds > 0) && {random 10 < 5}) then
-			{
-			_clip = format ["@TPW_MODS\sounds\%1.ogg",floor (random tpw_soap_usersounds) + 1];
-			_len = 30;
-			};
-		_finish = diag_ticktime + _len - 2;
-		_house setvariable ["tpw_soap_ambienceflag",_finish,true];
-		[_clip,_house,false,_pos,_vol,_pitch,_atten] remoteExec ["playSound3D", 0];
-		waituntil
-			{
-			sleep 5.11;
-			(diag_ticktime > _house getvariable "tpw_soap_ambienceflag");
-			};	
-		_house setvariable ["tpw_soap_ambienceflag",0,true];
-		tpw_soap_soundsplaying = tpw_soap_soundsplaying - 1;
-		};
-	};	
-	
-// PLAY CONSTRUCTION NOISES IN HOUSES
-tpw_soap_fnc_constructionsounds =
-	{
-	private _house = _this select 0;
-	[_house] spawn	
-		{
-		private ["_house","_sel","_len","_finish","_clip","_pos","_pitch","_atten","_vol"];
-		sleep random 3;
-		_house = _this select 0;
-		_pitch = 0.8 + random 0.3;
-		_pos = getposasl _house;
-		_atten = tpw_soap_attenuation + random tpw_soap_attenuation;
-		_vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * 0.45;
-		
-		_sel = ceil random 12;
-		_clip = format ["%1%2.ogg",'TPW_SOUNDS\sounds\construction\b',_sel];	
-		_len = tpw_soap_constructionlength select _sel;
-		_finish = diag_ticktime + _len - 5;
-		_house setvariable ["tpw_soap_constructionflag",_finish,true];
-		[_clip,_house,false,_pos,_vol,_pitch,_atten] remoteExec ["playSound3D", 0];
-		waituntil
-			{
-			sleep 5.11;
-			(diag_ticktime > _house getvariable "tpw_soap_constructionflag");
-			};	
-		_house setvariable ["tpw_soap_constructionflag",0,true];
-		tpw_soap_constructionplaying = tpw_soap_constructionplaying - 1;
-		};
-	};	
-
-// PLAY TELEPHONE NOISES IN HOUSES
-tpw_soap_fnc_phone =
-	{
-	private ["_house","_sel","_clip","_pos","_pitch","_atten","_pause","_rings","_vol"];
-	while {true} do
-		{
-		if (count tpw_soap_nearhouses > 4 && {daytime > tpw_core_morning && daytime < tpw_core_night}) then
-			{	
-			_house = tpw_soap_nearhouses select (floor (random (count tpw_soap_nearhouses)));
-			_pitch = 0.8 + random 0.3;
-			_pos = getposasl _house;
-			_atten = tpw_soap_attenuation + random tpw_soap_attenuation;
-			_sel = ceil random 13;
-			_clip = format ["%1%2.ogg",'TPW_SOUNDS\sounds\phone\ringtone',_sel];	
-			_vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * 0.05;
-			_pause = 2 + random 1;
-			_rings = 2 + random 6;
-			for "_i" from 1 to _rings do
-				{
-				[_clip,_house,false,_pos,_vol,_pitch,_atten] remoteExec ["playSound3D", 0];
-				sleep _pause;
-				};
-			};	
-		sleep random 90;	
-		
-		};
-	};
-	
-// PLAY COUGHS AND SNEEZES
-tpw_soap_fnc_resp =
-	{
-	private ["_house","_sel","_finish","_clip","_pos","_pitch","_atten","_vol"];
-	while {true} do
-		{
-		if (count tpw_soap_nearhouses > 4 && {daytime > tpw_core_morning && daytime < tpw_core_night}) then
-			{
-			waituntil
-				{	
-				_house = tpw_soap_nearhouses select (floor (random (count tpw_soap_nearhouses)));
-				_house distance player  > 10
-				};
-			_pitch = 0.8 + random 0.3;
-			_pos = getposasl _house;
-			_atten = tpw_soap_attenuation + random tpw_soap_attenuation;
-			_sel = ceil random 21;
-			_clip = format ["%1%2.ogg",'TPW_SOUNDS\sounds\respiratory\resp',_sel];	
-			_vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * 3;
-			[_clip,_house,false,_pos,_vol,_pitch,_atten] remoteExec ["playSound3D", 0];
-			};	
-		sleep random 60;	
-		};
-	};	
-	
-// KIDS
-tpw_soap_fnc_kids =
-	{
-	private ["_kidhouses","_house","_sel","_finish","_clip","_pos","_pitch","_atten","_vol"];
-	while {true} do
-		{
-		if (tpw_soap_active) then
-			{
-			_kidhouses = tpw_soap_nearhouses select {_x distance player > 25}; // only play kid noises from more distant houses
-			if (count _kidhouses > 2 && {daytime > tpw_core_morning && daytime < tpw_core_night}) then
-				{
-				_house = _kidhouses select (floor (random (count _kidhouses)));
-				_pitch = 0.9 + random 0.2;
-				_pos = getposasl _house;
-				_atten = tpw_soap_attenuation *5;
-				_sel = ceil random 12;
-				_clip = format ["%1%2.ogg",'TPW_SOUNDS\sounds\kids\kids',_sel];	
-				_vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * tpw_soap_kidfactor * 0.85;
-				//hintsilent _clip;
-				[_clip,_house,false,_pos,_vol,_pitch,_atten] remoteExec ["playSound3D", 0];
-				};
-			};		
-		sleep random 60;	
-		};
-	};		
-
-// PLAY AZAN IN NEARBY MOSQUE
-tpw_soap_fnc_azanplay =
-	{
-	private _mosque = _this select 0;
-	if (player distance _mosque > 250) exitwith {};
-	[_mosque] spawn	
-		{
-		private ["_mosque","_sel","_len","_finish","_song","_vol","_pos"];
-		_mosque = _this select 0;
-		_sel = floor random 10;
-		_len = tpw_soap_azanlength select _sel;
-		_song = format ["TPW_SOUNDS\sounds\azan\%1.ogg",(_sel + 1)];
-		_finish = diag_ticktime + _len;
-		_mosque setvariable ["tpw_soap_azanflag",_finish,true];
-		_vol = tpw_soap_volume * tpw_soap_azanvolume + random 0.25;
-		_pos = getposasl _mosque;
-		_pos = [_pos select 0, _pos select 1, (_pos select 2) + 50];
-		[_song,_mosque,false,_pos,_vol,1,100] remoteExec ["playSound3D", 0];
-		tpw_soap_azanflag = 1;
-		sleep 5.11;
-		// Play prayer in nearest house
-		["TPW_SOUNDS\sounds\mideast\18.ogg",nearestbuilding player] remoteExec ["playSound3D", 0];
-		waituntil
-			{
-			sleep 5.11;
-			(diag_ticktime > _mosque getvariable "tpw_soap_azanflag");
-			};	
-		_mosque setvariable ["tpw_soap_azanflag",0,true];
-		tpw_soap_azanflag = 0;
-		};
-	};		
-	
-// CREAKING NOISES IN HOUSES
-tpw_soap_fnc_housenoise = 
-	{
-	private ["_sound","_pitch","_vol"];
-	while {true} do
-		{
-		if (tpw_soap_active && {[] call tpw_soap_fnc_indoors} && {[] call tpw_soap_fnc_nearestbuilding < 10}) then
-			{
-			_pitch = 0.8 + random 0.4;
-			_vol = tpw_soap_volume * tpw_soap_housefxvolume * windstr * 0.25; // louder creaking in the wind
-			_sound = format ["TPW_SOUNDS\sounds\house\c%1.ogg",(ceil random 7)];
-			[_sound,player,false,getposasl player,_vol,_pitch,50] remoteExec ["playSound3D", 0];
-			};
-		sleep random 30;	
-		};
-	};
-	
-// CHAINSAWS
-tpw_soap_fnc_chainsaws = 
-	{
-		private ["_thispos", "_radius","_dir","_posx","_posy","_randpos","_sound"];
-	while {true} do
-		{		
-		sleep random 120;	
-		_thispos = getposasl player;
-		_radius = 200 + random 100;
-		_dir = random 360;
-		_posx = ((_thispos select 0) + (_radius * sin(_dir)));
-		_posy = ((_thispos select 1) + (_radius * cos(_dir)));
-		_randpos = [_posx,_posy,0]; 
-		if (tpw_soap_active && {daytime > tpw_soap_sunrise} && {daytime < tpw_soap_sunset}) then
-			{
-			if (count ([_randpos,50] call tpw_core_fnc_neartrees)> 50) then
-				{
-				_sound = format ["TPW_SOUNDS\sounds\chainsaw\chainsaw%1.ogg",(ceil random 4)];
-				[_sound,_randpos,false,_randpos,tpw_soap_chainsawvolume * (10+random 5),1,500] remoteExec ["playSound3D", 0];
-				};
-			};
-		};
-	};	
-	
-// FOREST AMBIENCE
-tpw_soap_fnc_forest = 
-	{
-	private ["_trees","_sound","_treepos","_rnd","_vol"];
-	while {true} do
-		{		
-		sleep random 20;
-		_trees = [];
-		if (tpw_soap_active) then
-			{
-			if (tpw_soap_lastpos distance position player > 25) then
-				{
-				_trees = [position player, 50] call tpw_core_fnc_neartrees;
-				tpw_soap_lastpos = position player;
-				};
-			if (count _trees> 20) then
-				{
-				_vol = 1.5;
-				_rnd = ceil random 22;
-				if (_rnd in [1,2,3,4,5,10,11,20,21]) then {_vol= 0.75};
-				if (tolower worldname == "chernarusredux") then {_vol = _vol * 2};		
-				_sound = format ["TPW_SOUNDS\sounds\forest\forest%1.ogg",_rnd];
-				_treepos = (getposasl (_trees select (floor random count _trees))) ;
-				[_sound,_treepos,false,_treepos,tpw_soap_volume * _vol,1 + random 0.2,300] remoteExec ["playSound3D", 0];
-				};
-			};
-		};
-	};		
-	
-// TRAFFIC
-tpw_soap_fnc_traffic = 
-	{
-	private ["_roads","_vol","_sound","_building","_buildings"];
-	while {true} do
-		{		
-		if (tpw_soap_active) then
-			{
-			//_building = nearestbuilding player;
-			_buildings = nearestTerrainObjects [position player, ["house","building"], 50, true];
-			if (count _buildings > 1) then
-				{
-				_building = _buildings select 1;
-				_roads = count ((player nearroads 400) select {isonroad _x}) / 400;
-				_vol = tpw_soap_volume * tpw_soap_mapfactor * tpw_soap_trafficmult * _roads * _roads * tpw_soap_soundvolmult;
-				if (_vol > tpw_soap_trafficmult) then {_vol = tpw_soap_trafficmult};
-				_sound = format ["TPW_SOUNDS\sounds\traffic\%1.ogg",(ceil random 9)];
-				[_sound, _building,false,getposasl _building vectoradd [0,0,20],_vol,1,200] remoteExec ["playSound3D", 0];
-				};
-			};
-		sleep random 45;	
-		};
-	};		
-	
-// WIND NOISE IN HOUSES	
-tpw_soap_fnc_windnoise = 
-	{
-	private ["_sound","_pitch","_vol"];
-	while {true} do
-		{
-		if (tpw_soap_active &&{[] call tpw_soap_fnc_indoors} && {[] call tpw_soap_fnc_nearestbuilding < 10} && {windstr > 0.2}) then
-			{
-			_pitch = 0.8 + random 0.4;
-			_vol = (tpw_soap_volume * tpw_soap_housefxvolume * windstr * 0.5);
-			_sound = format ["TPW_SOUNDS\sounds\house\w%1.ogg",(ceil random 9)];
-			_building = 
-			[_sound,player,false,getposasl player,_vol,_pitch,50] remoteExec ["playSound3D", 0];
-			sleep random 10;
-			_sound = format ["TPW_SOUNDS\sounds\house\r%1.ogg",(ceil random 6)]; // rattle
-			[_sound,player,false,getposasl player,_vol * 2,_pitch,50] remoteExec ["playSound3D", 0];
-			};
-		sleep 30 + random 10;	
-		};
-	};	
-	
-// TRAINS	
-tpw_soap_fnc_trains = 
-	{
-	private ["_sound","_pos","_posx","_posy","_dir","_vol"];
-	while {true} do
-		{
-		if (tpw_soap_active && {diag_ticktime > tpw_soap_nexttrain}) then
-			{
-			if (count tpw_soap_nearhouses == 0) then
-				{
-				_vol = random 0.2;
-				} else
-				{
-				_vol = random 1;
-				};
-			if (isServer) then {
-            _nearestPlayer = [allPlayers, position player] call BIS_fnc_nearestPosition;
-            _pos = getposasl _nearestPlayer;
-            } else {
-            _pos = getposasl player;
-            };
-			_dir = random 360;
-			_posx = (_pos select 0) + (200 * sin _dir); 
-			_posy = (_pos select 1) + (200 * cos _dir); 
-			_sound = format ["TPW_SOUNDS\sounds\train\train%1.ogg",(ceil random 3)];
-			tpw_soap_nexttrain = diag_ticktime + 60 + random 60;
-			[_sound,player,false,[_posx,_posy,0],_vol,1,500] remoteExec ["playSound3D", 0];
-			};
-		sleep 5.11;
-		};
-	};		
-
-// SCREAMS / BARKS / SIRENS IF NEARBY GUNFIRE 
-if (hasInterface) then {
-    player addeventhandler ["firednear",{0 = [player] spawn tpw_soap_fnc_scream}];
+// FUNCIÓN DE NÚMEROS ALEATORIOS SINCRONIZADOS
+// Versión simplificada sin operaciones anidadas
+tpw_soap_fnc_syncRandom = {
+    params ["_max", ["_min", 0]];
+    
+    private _time = floor(serverTime * 10);
+    private _seed = (tpw_soap_sync_seed + _time) % 10000;
+    private _value = (_seed * 75) % (_max - _min);
+    _value = _value + _min;
+    
+    _value
 };
-tpw_soap_fnc_scream =
-	{
-	private ["_sound","_pitch","_vol","_house","_nearhouses"];
-	if (diag_ticktime > tpw_soap_nextcry && {random 10 < 3}) then 
-		{			
-		tpw_soap_nextcry = diag_ticktime + random 15;	
-		sleep 1 + random 5;
-		_nearhouses = [tpw_soap_radius * 0.75] call tpw_core_fnc_screenhouses;
-		if ((_nearhouses select 0 distance player  < tpw_soap_radius) && {!([] call tpw_soap_fnc_indoors)}) then
-			{
-			_house = _nearhouses select floor (random (count _nearhouses));
-			_vol = tpw_soap_screamvolume * 2;
-			_pitch = 0.9 + random 0.2;
-			if (random 1 > 0.5) then
-				{
-				_sound = format ["TPW_SOUNDS\sounds\fear\%1.ogg",(ceil random 12)]; // screams, babies
-				} else
-				{
-				_sound = format ["TPW_SOUNDS\sounds\animal\dog%1.ogg",ceil (random 20)]; // barks
-				};
-			[_sound,_house,false,getposasl _house,_vol,_pitch,100] remoteExec ["playSound3D", 0];
-			
-			if (tpw_soap_city) then
-				{
-				sleep random 10;
-				_sound = format ["TPW_SOUNDS\sounds\siren\siren%1.ogg",ceil (random 4)]; // sirens
-				[_sound,_house,false,getposasl _house,1.5*tpw_soap_sirenvolume,_pitch,250] remoteExec ["playSound3D", 0];
-				};	
-			};
-		};
-	};
 
-// LAPPING WATER 
-tpw_soap_fnc_water =
-	{
-	while {true} do
-		{
-		if (tpw_soap_active) then
-			{
-			if (isServer) then {
-            _nearestPlayer = [allPlayers, position player] call BIS_fnc_nearestPosition;
-            _pos = getposasl _nearestPlayer;
-            } else {
-            _pos = getposasl player;
+// INICIALIZACIÓN DE SINCRONIZACIÓN REAL
+tpw_soap_fnc_initSync = {
+    if (!isMultiplayer) then {
+        // En singleplayer, siempre somos el master
+        tpw_soap_master_client = true;
+        tpw_soap_sync_seed = floor(random 999999);
+        tpw_soap_sync_initialized = true;
+    } else {
+        // En multiplayer, el servidor decide quién es el master
+        if (isServer) then {
+            tpw_soap_sync_seed = floor(random 999999);
+            publicVariable "tpw_soap_sync_seed";
+            
+            // Asignar el ID más bajo como master
+            private _allPlayerIDs = [];
+            {
+                if (isPlayer _x) then {
+                    _allPlayerIDs pushBack [owner _x, _x];
+                };
+            } forEach allPlayers;
+            
+            // Ordenar por ID para consistencia
+            _allPlayerIDs sort true;
+            
+            if (count _allPlayerIDs > 0) then {
+                tpw_soap_master_id = (_allPlayerIDs select 0) select 0;
+                publicVariable "tpw_soap_master_id";
             };
-			_dist = 5;
-			for "_i" from 0 to 36 do
-				{
-				_dir = 10 * _i;
-				_posx = (_pos select 0) + (_dist * sin _dir);
-				_posy = (_pos select 1) +  (_dist * cos _dir);
-				if (surfaceiswater [_posx,_posy]) exitwith
-					{
-					_water = format ["TPW_SOUNDS\sounds\water\water%1.ogg",(ceil random 4)];
-					[_water,[_posx,_posy],false,[_posx,_posy],2,1,50] remoteExec ["playSound3D", 0];
-					};
-				};
-			};	
-		sleep random 20;
-		};
-	};	
-	
-// CAR STEREOS
-tpw_soap_fnc_carmusic = 
-	{
-	while {true} do
-		{
-		if !(isnil "tpw_car_cararray") then
-			{
-				{
-				_car = _x;
-				if (typename _car == "OBJECT" && {diag_ticktime > _car getvariable ["tpw_car_stereo",0]} && {tpw_soap_songs > 0}) then
-					{
-					_car setvariable ["tpw_car_stereo",diag_ticktime + 180];
-					_car say3d [format["%1%2",tpw_soap_carmusic,ceil random tpw_soap_songs],150,1];
-					};
-				} foreach tpw_car_cararray;	
-			};
-		sleep random 30;
-		};
-	};
-	
-// RUN IT
-sleep 10;
-[] spawn tpw_soap_fnc_mainloop;
-[] spawn tpw_soap_fnc_azanloop;
-[] spawn tpw_soap_fnc_housenoise;
-[] spawn tpw_soap_fnc_windnoise;
-//[] spawn tpw_soap_fnc_chainsaws;
-[] spawn tpw_soap_fnc_forest;
-[] spawn tpw_soap_fnc_phone;
-[] spawn tpw_soap_fnc_resp;
-[] spawn tpw_soap_fnc_kids;
-[] spawn tpw_soap_fnc_traffic;
-[] spawn tpw_soap_fnc_water;
-[] spawn tpw_soap_fnc_carmusic;
+        };
+        
+        // Esperar a que se establecan las variables globales
+        waitUntil {!isNil "tpw_soap_sync_seed" && !isNil "tpw_soap_master_id"};
+        
+        // Verificar si este cliente es el master
+        tpw_soap_master_client = (clientOwner == tpw_soap_master_id);
+        tpw_soap_sync_initialized = true;
+    };
+};
 
-// Trains
-if (tolower worldname in [	
-"chernarus",
-"chernarus_summer",
-"chernarusredux",
-"chernarus_winter",
-"chernarus_2035",
-"cup_chernarus_a3",
-"tanoa",	
-"wl_rosche",
-"xcam_taunus",
-"gm_weferlingen_summer",
-"gm_weferlingen_winter",
-"enoch",
-"ruha",
-"stozec",
-"zdanice",
-"chernarusplus",
-"brf_sumava",
-"swu_public_novogorsk_map"
-]) then
-	{
-	tpw_soap_nexttrain = diag_ticktime + 30 + random 60;
-	[] spawn tpw_soap_fnc_trains;
-	};
+// FUNCIÓN PARA BROADCAST REAL DE EVENTOS DE SONIDO
+tpw_soap_fnc_broadcastSound = {
+    params ["_soundType", "_soundData"];
+    
+    // Si no somos el cliente master, no transmitimos
+    if (!tpw_soap_master_client) exitWith {};
+    
+    // Crear evento con timestamp para sincronización precisa
+    private _event = [_soundType, _soundData, serverTime];
+    
+    // Transmitir a todos los clientes
+    tpw_soap_sound_event = _event;
+    publicVariable "tpw_soap_sound_event";
+    
+    // También procesar localmente
+    [_event] call tpw_soap_fnc_processSound;
+};
 
+// PROCESADOR DE EVENTOS DE SONIDO
+tpw_soap_fnc_processSound = {
+    params ["_event"];
+    
+    // Extraer componentes del evento
+    private _soundType = _event select 0;
+    private _soundData = _event select 1;
+    
+    // Reproducir el sonido
+    playsound3d [_soundData select 0, objNull, false, _soundData select 1, _soundData select 2, _soundData select 3, _soundData select 4];
+};
 
-while {true} do
-	{
-	// dummy loop so script doesn't terminate
-	sleep 5.11;
-	};	
+// HANDLER PARA EVENTOS DE SONIDO
+"tpw_soap_sound_event" addPublicVariableEventHandler {
+    private _event = _this select 1;
+    [_event] call tpw_soap_fnc_processSound;
+};
+
+// AUTO DETECT REGION
+if (tpw_soap_regions isEqualTo [0]) then {
+    // Default to Polyglot
+    tpw_soap_regions = [1,2,3,4,5,6,7,8];
+    
+    // Greece
+    if (tolower worldname in ["altis","stratis","bozcaada","hebontes","rof_ammoulliani","sehreno"]) then {
+        tpw_soap_regions = [1];
+    };
+    
+    // Mideast    
+    if (tolower worldname in ["mcn_aliabad","bmfayshkhabur","clafghan","fata","hellskitchen","hellskitchens","mcn_hazarkot","praa_av","reshmaan","shapur_baf","takistan","torabora","tup_qom","zargabad","pja306","tunba","mountains_acr","kunduz","pja310","pja308","tropica","pja307","wgl_palms","fallujah","dya","kidal","pja319","lythium","huntersvalley","farkhar","altiplano","mog","tem_anizay","cup_kunduz","khoramshahr","afghanistan","uzbin","swu_public_salman_map","cup_kunduz","rut_mandol","sefrouramal","bastek","bala_murghab","northtakistan","bala_murghab_summer","bala_murghab_winter","farabad","albasrah","swu_public_afghan_map","juju_sahatra"]) then {
+        tpw_soap_regions = [2];
+    };
+
+    // Tropical / Pacific / African
+    if (tolower worldname in ["tanoa","mak_jungle","pja305","tigeria","tigeria_se","plr_mana","sara","saralite","sara_dbe1","porto","intro","pja312","tanoa","bsoc_brasil","lingor3","isladuala3","dingor","prei_khmaoch_luong","us101_cao_bang","dakrong","uns_dong_ha","rungsat","csj_sea","csj_lowlands","phu_bai","uns_ptv","rockwall","pulau","seangola","kapaulio","sfp_wamako","126map","tem_kujari","rhspkl","cam_lao_nam","ctm_front","vn_khe_sanh","bozoum","edaly_map_alpha","juju_kalahari","swu_public_rhode_map","vn_the_bra","umb_colombia","islapera"]) then {
+        tpw_soap_regions = [3];
+    };
+    
+    // France    
+    if (tolower worldname in ["malden","tembelan","porquerolles","pianosa_aut","montellav3","juju_orglandes","spe_normandy"]) then {
+        tpw_soap_regions = [4];
+    };    
+
+    // Eastern Europe    
+    if (tolower worldname in ["caribou","namalsk","bush_island_51","chernarus","chernarus_summer","chernarusredux","fdf_isle1_a","woodland_acr","bootcamp_acr","thirsk","thirskw","utes","gsep_mosch","gsep_zernovo","anim_helvantis_v2","colleville","staszow","baranow","panovo","ivachev","pja314","beketov","blud_vidda","sennoe","chernarus_2035","vis","atmt_trava","napfwinter","chernarus_winter","utes_winter","arctic","enoch","cup_chernarus_a3","jns_tria","stozec","kaska","elovyi","zdanice","chernarusplus","brf_sumava","lubyanka","swu_public_novogorsk_map","vtf_lybor"]) then {
+        tpw_soap_regions = [5];
+    };
+
+    // Germany
+    if (tolower worldname in ["mbg_celle2","wl_rosche","xcam_taunus","gm_weferlingen_summer","gm_weferlingen_winter","tem_cham","tem_chamw","esseker"]) then {
+        tpw_soap_regions = [6];
+    };        
+    
+    // Finland
+    if (tolower worldname in ["tem_summa","tem_suursaariv","tem_chernarus","tem_ihantala","tem_vinjesvingenc","vt7","ruha","hellanmaa","vkn_halsoy_terrain","maksniemi","jumo"]) then {
+        tpw_soap_regions = [7];
+    };        
+    
+    // Scotland
+    if (tolower worldname in ["oski_corran","rof_mok","oski_ire"]) then {
+        tpw_soap_regions = [8];
+    };        
+};        
+
+// ADJUST TRAFFIC NOISE MULTIPLIER PER MAP
+private _maps = ["altis","stratis","malden","lythium","tanoa","prei_khmaoch_luong","dya","chernarusredux","tem_anizay","gm_weferlingen_summer","gm_weferlingen_winter","kidal","chernarusplus"];
+private _adj = [1,1.5,1.5,1.5,1.2,0.2,0.5,0.1,0.3,2,1,0.1,1];
+if (tolower worldname in _maps) then {
+    tpw_soap_mapfactor = (_adj select (_maps find tolower worldname));     
+} else {
+    tpw_soap_mapfactor = 1;     
+};
+    
+// IS PLAYER IN A HOUSE?        
+tpw_soap_fnc_indoors = {
+    private _pos = eyepos player;
+    private _highpos = _pos vectoradd [0,0,10];
+    private _return = lineintersects [_pos, _highpos];
+    _return    
+};
+    
+// NEAREST BUILDING
+tpw_soap_fnc_nearestbuilding = {    
+    private _return = (nearestObject [player, "House"]) distance player; // will also return walls
+    _return
+};
+
+// MAIN LOOP - SINCRONIZADO
+tpw_soap_fnc_mainloop = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // Solo el master controla el flujo de sonidos
+        if (tpw_soap_master_client && {tpw_soap_active} && 
+           {tpw_soap_soundsplaying < tpw_soap_maxsounds} && 
+           {!([] call tpw_soap_fnc_indoors)}) then {
+            tpw_soap_nearhouses = [];
+            [] call tpw_soap_fnc_housescan;
+        };
+            
+        // Todos los clientes verifican estado de batalla
+        if (tpw_core_battle) then {
+            tpw_soap_active = false;
+        } else {
+            tpw_soap_active = true;
+        };
+        sleep 5.11;
+    };
+};
+    
+// AZAN LOOP - SINCRONIZADO
+tpw_soap_fnc_azanloop = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    tpw_soap_azanflag = 0;
+    while {true} do {
+        // Solo el master inicia llamadas a la oración
+        if (tpw_soap_master_client && {tpw_soap_active} &&
+           {tpw_soap_azanflag == 0} &&
+           {(daytime > tpw_soap_sunrise - 1.25 && daytime < tpw_soap_sunrise - 1) || 
+           (daytime > tpw_soap_sunrise && daytime < tpw_soap_sunrise + 0.25) || 
+           (daytime > 11.75 && daytime < 12) || 
+           (daytime > 14 && daytime < 14.25) ||
+           (daytime > tpw_soap_sunset - 2 && daytime < tpw_soap_sunset - 1.75) || 
+           (daytime > tpw_soap_sunset && daytime < tpw_soap_sunset + 0.25)}) then {
+            [] call tpw_soap_fnc_mosquescan;
+        };
+        sleep 61.3;
+    };
+};
+    
+// HOUSE SCANNING - SINCRONIZADO
+tpw_soap_fnc_housescan = {
+    // Usamos la semilla sincronizada para seleccionar la región
+    private _maxRegions = count tpw_soap_regions;
+    private _regionIndex = [_maxRegions] call tpw_soap_fnc_syncRandom;
+    tpw_soap_region = tpw_soap_regions select _regionIndex;
+
+    // Is player in built up city? - Determinado por el master
+    tpw_soap_city = false;
+    if (count nearestLocations [position player, ["NameCity","NameCityCapital"], 500] > 0 && {count ([100] call tpw_core_fnc_screenhouses) > 20}) then {
+        tpw_soap_city = true;
+    }; // only have siren ambience if in built up city areas
+    
+    // Region - can be changed on the fly
+    if (tpw_soap_region == 1) then {
+        tpw_soap_sounds = 39;
+        tpw_soap_songs = 9;
+        tpw_soap_path = "TPW_SOUNDS\sounds\greek\";
+        tpw_soap_soundlength = tpw_soap_greeksoundlength;
+        tpw_soap_songlength = tpw_soap_greeksonglength;
+        tpw_soap_musicfactor = 3.5; // Slightly louder Greek music
+        tpw_soap_kidfactor = 0.75; 
+        tpw_soap_soundfactor = 1;
+        tpw_soap_carmusic = "greekmusic";
+    };
+        
+    if (tpw_soap_region == 2) then {
+        tpw_soap_sounds = 22;
+        tpw_soap_songs = 20;
+        tpw_soap_path = "TPW_SOUNDS\sounds\mideast\";
+        tpw_soap_soundlength = tpw_soap_mideastsoundlength;
+        tpw_soap_songlength = tpw_soap_mideastsonglength;
+        tpw_soap_musicfactor = 1.5;
+        tpw_soap_kidfactor = 0.75;
+        tpw_soap_soundfactor = 1.1;
+        tpw_soap_carmusic = "mideastmusic";
+    };     
+
+    if (tpw_soap_region == 3) then {
+        tpw_soap_sounds = 25;
+        tpw_soap_songs = 11;
+        tpw_soap_path = "TPW_SOUNDS\sounds\fiji\";
+        tpw_soap_soundlength = tpw_soap_fijisoundlength;
+        tpw_soap_songlength = tpw_soap_fijisonglength;
+        tpw_soap_musicfactor = 3;
+        tpw_soap_kidfactor = 1.25;
+        tpw_soap_soundfactor = 1;
+        tpw_soap_carmusic = "fijimusic";
+    };     
+
+    if (tpw_soap_region == 4) then {
+        tpw_soap_sounds = 29;
+        tpw_soap_songs = 12;
+        tpw_soap_path = "TPW_SOUNDS\sounds\france\";
+        tpw_soap_soundlength = tpw_soap_francesoundlength;
+        tpw_soap_songlength = tpw_soap_francesonglength;
+        tpw_soap_musicfactor = 0.5;
+        tpw_soap_kidfactor = 0.75;
+        tpw_soap_soundfactor = 1.3;
+        tpw_soap_carmusic = "frenchmusic";        
+    };     
+
+    if (tpw_soap_region == 5) then {
+        tpw_soap_sounds = 29;
+        tpw_soap_songs = 8;
+        tpw_soap_path = "TPW_SOUNDS\sounds\russia\";
+        tpw_soap_soundlength = tpw_soap_russiasoundlength;
+        tpw_soap_songlength = tpw_soap_russiasonglength;
+        tpw_soap_musicfactor = 1.5;
+        tpw_soap_kidfactor = 0.75;
+        tpw_soap_soundfactor = 1.1;
+        tpw_soap_carmusic = "russianmusic";
+    };    
+        
+    if (tpw_soap_region == 6) then {
+        tpw_soap_sounds = 31;
+        tpw_soap_songs = 18;
+        tpw_soap_path = "TPW_SOUNDS\sounds\german\";
+        tpw_soap_soundlength = tpw_soap_germansoundlength;
+        tpw_soap_songlength = tpw_soap_germansonglength;
+        tpw_soap_musicfactor = 3;
+        tpw_soap_kidfactor = 0.5;
+        tpw_soap_soundfactor = 1.4;
+        tpw_soap_carmusic = "germanmusic";
+    };        
+
+    if (tpw_soap_region == 7) then {
+        tpw_soap_sounds = 21;
+        tpw_soap_songs = 13;
+        tpw_soap_path = "TPW_SOUNDS\sounds\finnish\";
+        tpw_soap_soundlength = tpw_soap_finnishsoundlength;
+        tpw_soap_songlength = tpw_soap_finnishsonglength;
+        tpw_soap_musicfactor = 3;
+        tpw_soap_kidfactor = 0.5;
+        tpw_soap_soundfactor = 2.4;
+        tpw_soap_carmusic = "finnishmusic";
+    };    
+
+    if (tpw_soap_region == 8) then {
+        tpw_soap_sounds = 53;
+        tpw_soap_songs = 16;
+        tpw_soap_path = "TPW_SOUNDS\sounds\scottish\";
+        tpw_soap_soundlength = tpw_soap_scottishsoundlength;
+        tpw_soap_songlength = tpw_soap_scottishsonglength;
+        tpw_soap_musicfactor = 3;
+        tpw_soap_kidfactor = 1;
+        tpw_soap_soundfactor = 1;
+        tpw_soap_carmusic = "scottishmusic";
+    };    
+        
+    // Adjust volume & chance of spawning based on time of day - Sincronizado para todos
+    private _hour = floor daytime;
+    tpw_soap_soundvolmult = [0,0,0,0,0,0.2,0.4,0.6,0.8,1,1.0,1,1.2,1.2,1.2,1.2,1,1,0.9,0.8,0.6,0.3,0.2,0.1,0] select _hour;
+    tpw_soap_musicvolmult = [0,0,0,0,0,0,0,0.3,0.4,0.6,0.8,0.9,1,1,1,1,1,1,1,1,1,0.8,0.4,0.2,0,0] select _hour;
+
+    // Scan for habitable houses - Determinado por el master
+    private _nearhouses = [tpw_soap_radius] call tpw_core_fnc_screenhouses;
+    tpw_soap_nearhouses = _nearhouses select {damage _x == 0};
+
+    // Loop through nearest houses, find first available
+    for "_i" from 0 to (count tpw_soap_nearhouses - 1) do {
+        private _house = tpw_soap_nearhouses select _i;
+        
+        // Play environmental ambience if not already doing so - Sincronizado para todos
+        // CORREGIDO: Separando los pasos de la llamada syncRandom y la comparación
+        if ((_house getVariable ["tpw_soap_ambienceflag", 0] == 0) && {_house distance player > 5} && {tpw_soap_soundsplaying < tpw_soap_maxsounds}) then {
+            private _randValue = [100] call tpw_soap_fnc_syncRandom;
+            private _threshold = tpw_soap_soundvolmult * 100;
+            
+            if (_randValue < _threshold) then {
+                tpw_soap_soundsplaying = tpw_soap_soundsplaying + 1;
+                _house setVariable ["tpw_soap_ambienceflag", 1, true];
+                [_house] call tpw_soap_fnc_ambientsounds;
+            };
+        };
+        
+        // Occasionally play music if not already doing so - Sincronizado para todos
+        // CORREGIDO: Separando los pasos de la llamada syncRandom y la comparación
+        if ((_house getVariable ["tpw_soap_musicflag", 0] == 0) && {_house distance player > 5} && {tpw_soap_songsplaying < tpw_soap_maxsongs}) then {
+            private _randValue = [100] call tpw_soap_fnc_syncRandom;
+            private _threshold = tpw_soap_musicvolmult * 2;
+            
+            if (_randValue < _threshold) then {
+                tpw_soap_songsplaying = tpw_soap_songsplaying + 1;
+                _house setVariable ["tpw_soap_musicflag", 1, true];
+                [_house] call tpw_soap_fnc_ambientmusic;
+            };
+        };
+            
+        // Occasional construction noises - Sincronizado para todos
+        // CORREGIDO: Separando los pasos de la llamada syncRandom y la comparación
+        if (tpw_soap_constructionplaying < 3 && {daytime > tpw_soap_sunrise && daytime < tpw_soap_sunset} && {_house distance player > 5}) then {
+            private _randValue = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_randValue < 10) then {
+                _house setVariable ["tpw_soap_constructionflag", 1, true];
+                tpw_soap_constructionplaying = tpw_soap_constructionplaying + 1;
+                [_house] call tpw_soap_fnc_constructionsounds;
+            };
+        };
+    };
+};
+    
+// MOSQUE SCANNING - SINCRONIZADO
+tpw_soap_fnc_mosquescan = {
+    // Scan for habitable houses - which can include mosques
+    private _nearhouses = [250] call tpw_core_fnc_screenhouses;
+    private _nearmosques = [];
+    
+    // Grab nearest mosques - but only want one playing at a given time
+    private _playflag = 0;
+    for "_i" from 0 to (count _nearhouses - 1) do {
+        private _mosque = _nearhouses select _i;
+        if (["osque", str typeof _mosque] call BIS_fnc_inString) then {
+            _nearmosques pushBack _mosque;
+        };
+    };
+    _nearmosques = [_nearmosques, [], {player distance _x}, "ASCEND"] call BIS_fnc_sortBy;
+    
+    if ((count _nearmosques > 0) && {(_nearmosques select 0) getVariable ["tpw_soap_azanflag", 0] == 0}) then {
+        private _mosque = _nearmosques select 0;
+        [_mosque] call tpw_soap_fnc_azanplay; 
+    };
+};    
+
+// PLAY MUSIC FROM HOUSES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_ambientmusic = {
+    private _house = _this select 0;
+    [_house] spawn {
+        private ["_house", "_sel", "_len", "_finish", "_clip", "_pos", "_pitch", "_atten", "_vol"];
+        private _randomSleep = [3] call tpw_soap_fnc_syncRandom;
+        sleep _randomSleep;
+        
+        _house = _this select 0;
+        _pitch = 1;
+        _pos = getPosASL _house;
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomAtten = [tpw_soap_attenuation] call tpw_soap_fnc_syncRandom;
+        _atten = tpw_soap_attenuation + _randomAtten;
+        
+        _vol = tpw_soap_volume * tpw_soap_musicvolume * tpw_soap_musicvolmult * tpw_soap_musicfactor * 0.75;
+        
+        // Music - Usar números aleatorios sincronizados
+        if (count tpw_soap_songplayed >= tpw_soap_songs) then {
+            tpw_soap_songplayed = [];
+        };
+        
+        // Selección sincronizada
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _sel = [tpw_soap_songs] call tpw_soap_fnc_syncRandom;
+        
+        while {_sel in tpw_soap_songplayed} do {
+            _sel = [tpw_soap_songs] call tpw_soap_fnc_syncRandom;
+        };
+        
+        tpw_soap_songplayed pushBack _sel;
+        _clip = format ["%1s%2.ogg", tpw_soap_path, (_sel + 1)];    
+        _len = tpw_soap_songlength select _sel;
+            
+        // Play user song from @TPW_MODS\music - Sincronizado
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_usermusic > 0) then {
+            private _randValue = [10] call tpw_soap_fnc_syncRandom;
+            
+            if (_randValue < 5) then {
+                private _songID = [tpw_soap_usermusic] call tpw_soap_fnc_syncRandom;
+                _clip = format ["@TPW_MODS\music\%1.ogg", _songID + 1];
+                _len = 180;
+            };
+        };
+        
+        _finish = diag_tickTime + _len - 5;
+        _house setVariable ["tpw_soap_musicflag", _finish, true];
+        
+        // Broadcast del sonido para sincronización
+        ["music", [_clip, _pos, _vol, _pitch, _atten]] call tpw_soap_fnc_broadcastSound;
+        
+        waitUntil {
+            sleep 5;
+            (diag_tickTime > _house getVariable "tpw_soap_musicflag");
+        };    
+        _house setVariable ["tpw_soap_musicflag", 0, true];
+        tpw_soap_songsplaying = tpw_soap_songsplaying - 1;
+    };
+};    
+    
+// PLAY ENVIROMENTAL AMBIENCE IN HOUSES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_ambientsounds = {
+    private _house = _this select 0;
+    [_house] spawn {
+        private ["_house", "_sel", "_len", "_finish", "_clip", "_pos", "_pitch", "_atten", "_vol"];
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [3] call tpw_soap_fnc_syncRandom;
+        sleep _randomSleep;
+        
+        _house = _this select 0;
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomPitch = [0.1] call tpw_soap_fnc_syncRandom;
+        _pitch = 0.95 + _randomPitch;
+        
+        _pos = getPosASL _house;
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomAtten = [tpw_soap_attenuation] call tpw_soap_fnc_syncRandom;
+        _atten = tpw_soap_attenuation + _randomAtten;
+        
+        _vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * tpw_soap_soundfactor;
+        
+        // Inbuilt SFX - Usar números aleatorios sincronizados
+        if (count tpw_soap_soundplayed >= tpw_soap_sounds) then {
+            tpw_soap_soundplayed = [];
+        };
+        
+        // Selección sincronizada
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _sel = [tpw_soap_sounds] call tpw_soap_fnc_syncRandom;
+        
+        while {_sel in tpw_soap_soundplayed} do {
+            _sel = [tpw_soap_sounds] call tpw_soap_fnc_syncRandom;
+        };
+        
+        tpw_soap_soundplayed pushBack _sel;
+        _clip = format ["%1%2.ogg", tpw_soap_path, (_sel + 1)];    
+        _len = tpw_soap_soundlength select _sel;
+
+        // User SFX - Sincronizado
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_usersounds > 0) then {
+            private _randValue = [10] call tpw_soap_fnc_syncRandom;
+            
+            if (_randValue < 5) then {
+                private _soundID = [tpw_soap_usersounds] call tpw_soap_fnc_syncRandom;
+                _clip = format ["@TPW_MODS\sounds\%1.ogg", _soundID + 1];
+                _len = 30;
+            };
+        };
+        
+        _finish = diag_tickTime + _len - 2;
+        _house setVariable ["tpw_soap_ambienceflag", _finish, true];
+        
+        // Broadcast del sonido para sincronización
+        ["ambient", [_clip, _pos, _vol, _pitch, _atten]] call tpw_soap_fnc_broadcastSound;
+        
+        waitUntil {
+            sleep 5;
+            (diag_tickTime > _house getVariable "tpw_soap_ambienceflag");
+        };    
+        _house setVariable ["tpw_soap_ambienceflag", 0, true];
+        tpw_soap_soundsplaying = tpw_soap_soundsplaying - 1;
+    };
+};    
+    
+// PLAY CONSTRUCTION NOISES IN HOUSES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_constructionsounds = {
+    private _house = _this select 0;
+    [_house] spawn {
+        private ["_house", "_sel", "_len", "_finish", "_clip", "_pos", "_pitch", "_atten", "_vol"];
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [3] call tpw_soap_fnc_syncRandom;
+        sleep _randomSleep;
+        
+        _house = _this select 0;
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomPitch = [0.3] call tpw_soap_fnc_syncRandom;
+        _pitch = 0.8 + _randomPitch;
+        
+        _pos = getPosASL _house;
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomAtten = [tpw_soap_attenuation] call tpw_soap_fnc_syncRandom;
+        _atten = tpw_soap_attenuation + _randomAtten;
+        
+        _vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * 0.45;
+        
+        // Selección sincronizada
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _sel = [12] call tpw_soap_fnc_syncRandom;
+        
+        _clip = format ["%1%2.ogg", 'TPW_SOUNDS\sounds\construction\b', _sel + 1];    
+        _len = tpw_soap_constructionlength select _sel;
+        _finish = diag_tickTime + _len - 5;
+        _house setVariable ["tpw_soap_constructionflag", _finish, true];
+        
+        // Broadcast del sonido para sincronización
+        ["construction", [_clip, _pos, _vol, _pitch, _atten]] call tpw_soap_fnc_broadcastSound;
+        
+        waitUntil {
+            sleep 5;
+            (diag_tickTime > _house getVariable "tpw_soap_constructionflag");
+        };    
+        _house setVariable ["tpw_soap_constructionflag", 0, true];
+        tpw_soap_constructionplaying = tpw_soap_constructionplaying - 1;
+    };
+};    
+
+// PLAY TELEPHONE NOISES IN HOUSES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_phone = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {count tpw_soap_nearhouses > 4} && {daytime > tpw_core_morning && daytime < tpw_core_night}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 20) then {
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _houseIndex = [count tpw_soap_nearhouses] call tpw_soap_fnc_syncRandom;
+                private _house = tpw_soap_nearhouses select _houseIndex;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _randomPitch = [0.3] call tpw_soap_fnc_syncRandom;
+                private _pitch = 0.8 + _randomPitch;
+                
+                private _pos = getPosASL _house;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _randomAtten = [tpw_soap_attenuation] call tpw_soap_fnc_syncRandom;
+                private _atten = tpw_soap_attenuation + _randomAtten;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _sel = [13] call tpw_soap_fnc_syncRandom;
+                private _clip = format ["%1%2.ogg", 'TPW_SOUNDS\sounds\phone\ringtone', _sel + 1];    
+                private _vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * 0.05;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _randomPause = [1] call tpw_soap_fnc_syncRandom;
+                private _pause = 2 + _randomPause;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _randomRings = [6] call tpw_soap_fnc_syncRandom;
+                private _rings = 2 + _randomRings;
+                
+                for "_i" from 1 to _rings do {
+                    // Broadcast del sonido para sincronización
+                    ["phone", [_clip, _pos, _vol, _pitch, _atten]] call tpw_soap_fnc_broadcastSound;
+                    sleep _pause;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [60] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 30 + _randomSleep;
+        sleep _sleepTime;
+    };
+};
+    
+// PLAY COUGHS AND SNEEZES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_resp = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {count tpw_soap_nearhouses > 4} && {daytime > tpw_core_morning && daytime < tpw_core_night}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 25) then {
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _houseIndex = [count tpw_soap_nearhouses] call tpw_soap_fnc_syncRandom;
+                private _house = tpw_soap_nearhouses select _houseIndex;
+                
+                if (_house distance player > 10) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomPitch = [0.3] call tpw_soap_fnc_syncRandom;
+                    private _pitch = 0.8 + _randomPitch;
+                    
+                    private _pos = getPosASL _house;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomAtten = [tpw_soap_attenuation] call tpw_soap_fnc_syncRandom;
+                    private _atten = tpw_soap_attenuation + _randomAtten;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _sel = [21] call tpw_soap_fnc_syncRandom;
+                    private _clip = format ["%1%2.ogg", 'TPW_SOUNDS\sounds\respiratory\resp', _sel + 1];    
+                    private _vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * 3;
+                    
+                    // Broadcast del sonido para sincronización
+                    ["resp", [_clip, _pos, _vol, _pitch, _atten]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [40] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 20 + _randomSleep;
+        sleep _sleepTime;
+    };
+};    
+    
+// KIDS - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_kids = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 20) then {
+                private _kidhouses = tpw_soap_nearhouses select {_x distance player > 25}; // only play kid noises from more distant houses
+                if (count _kidhouses > 2 && {daytime > tpw_core_morning && daytime < tpw_core_night}) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _houseIndex = [count _kidhouses] call tpw_soap_fnc_syncRandom;
+                    private _house = _kidhouses select _houseIndex;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomPitch = [0.2] call tpw_soap_fnc_syncRandom;
+                    private _pitch = 0.9 + _randomPitch;
+                    
+                    private _pos = getPosASL _house;
+                    private _atten = tpw_soap_attenuation * 5;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _sel = [12] call tpw_soap_fnc_syncRandom;
+                    private _clip = format ["%1%2.ogg", 'TPW_SOUNDS\sounds\kids\kids', _sel + 1];    
+                    private _vol = tpw_soap_volume * tpw_soap_ambientvolume * tpw_soap_soundvolmult * tpw_soap_kidfactor * 0.85;
+                    
+                    // Broadcast del sonido para sincronización
+                    ["kids", [_clip, _pos, _vol, _pitch, _atten]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [30] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 30 + _randomSleep;
+        sleep _sleepTime;
+    };
+};        
+
+// PLAY AZAN IN NEARBY MOSQUE - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_azanplay = {
+    private _mosque = _this select 0;
+    if (player distance _mosque > 250) exitWith {};
+    
+    [_mosque] spawn {
+        private ["_mosque", "_sel", "_len", "_finish", "_song", "_vol", "_pos"];
+        _mosque = _this select 0;
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _sel = [10] call tpw_soap_fnc_syncRandom;
+        
+        _len = tpw_soap_azanlength select _sel;
+        _song = format ["TPW_SOUNDS\sounds\azan\%1.ogg", (_sel + 1)];
+        _finish = diag_tickTime + _len;
+        _mosque setVariable ["tpw_soap_azanflag", _finish, true];
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomVolAdj = [0.25] call tpw_soap_fnc_syncRandom;
+        private _vol = tpw_soap_volume * tpw_soap_azanvolume + _randomVolAdj;
+        
+        _pos = getPosASL _mosque;
+        _pos = [_pos select 0, _pos select 1, (_pos select 2) + 50];
+        
+        // Broadcast del sonido para sincronización
+        ["azan", [_song, _pos, _vol, 1, 100]] call tpw_soap_fnc_broadcastSound;
+        
+        tpw_soap_azanflag = 1;
+        sleep 10;
+        
+        // Play prayer in nearest house
+        private _prayerPos = getPosASL nearestBuilding player;
+        ["azan", ["TPW_SOUNDS\sounds\mideast\18.ogg", _prayerPos, _vol * 0.5, 1, 50]] call tpw_soap_fnc_broadcastSound;
+        
+        waitUntil {
+            sleep 10;
+            (diag_tickTime > _mosque getVariable "tpw_soap_azanflag");
+        };    
+        _mosque setVariable ["tpw_soap_azanflag", 0, true];
+        tpw_soap_azanflag = 0;
+    };
+};        
+    
+// CREAKING NOISES IN HOUSES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_housenoise = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 15) then {
+                private _buildings = nearestObjects [position player, ["House"], 50];
+                if (count _buildings > 0) then {
+                    private _building = _buildings select 0;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomPitch = [0.4] call tpw_soap_fnc_syncRandom;
+                    private _pitch = 0.8 + _randomPitch;
+                    
+                    private _vol = tpw_soap_volume * tpw_soap_housefxvolume * windStr * 0.25; // louder creaking in the wind
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _sel = [7] call tpw_soap_fnc_syncRandom;
+                    private _sound = format ["TPW_SOUNDS\sounds\house\c%1.ogg", _sel + 1];
+                    private _pos = getPosASL _building;
+                    
+                    // Broadcast del sonido para sincronización
+                    ["house", [_sound, _pos, _vol, _pitch, 50]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [15] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 15 + _randomSleep;
+        sleep _sleepTime;
+    };
+};
+    
+// CHAINSAWS - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_chainsaws = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {        
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active} && {daytime > tpw_soap_sunrise} && {daytime < tpw_soap_sunset}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 10) then {
+                private _thispos = getPosASL player;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _randomRadius = [100] call tpw_soap_fnc_syncRandom;
+                private _radius = 200 + _randomRadius;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _dir = [360] call tpw_soap_fnc_syncRandom;
+                
+                private _posx = ((_thispos select 0) + (_radius * sin(_dir)));
+                private _posy = ((_thispos select 1) + (_radius * cos(_dir)));
+                private _randpos = [_posx, _posy, 0]; 
+                
+                private _trees = [_randpos, 50] call tpw_core_fnc_neartrees;
+                if (count _trees > 50) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _sel = [4] call tpw_soap_fnc_syncRandom;
+                    private _sound = format ["TPW_SOUNDS\sounds\chainsaw\chainsaw%1.ogg", _sel + 1];
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomVol = [5] call tpw_soap_fnc_syncRandom;
+                    private _vol = tpw_soap_chainsawvolume * (10 + _randomVol);
+                    
+                    // Broadcast del sonido para sincronización
+                    ["ambient", [_sound, _randpos, _vol, 1, 500]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [60] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 60 + _randomSleep;
+        sleep _sleepTime;
+    };
+};    
+    
+// FOREST AMBIENCE - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_forest = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {        
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 30) then {
+                private _trees = [];
+                if (tpw_soap_lastpos distance position player > 25) then {
+                    _trees = [position player, 50] call tpw_core_fnc_neartrees;
+                    tpw_soap_lastpos = position player;
+                };
+                if (count _trees > 20) then {
+                    private _vol = 1.5;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _rnd = [22] call tpw_soap_fnc_syncRandom;
+                    private _rnd = _rnd + 1;
+                    
+                    if (_rnd in [1,2,3,4,5,10,11,20,21]) then {_vol = 0.75};
+                    if (toLower worldName == "chernarusredux") then {_vol = _vol * 2};        
+                    private _sound = format ["TPW_SOUNDS\sounds\forest\forest%1.ogg", _rnd];
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _treeIndex = [count _trees] call tpw_soap_fnc_syncRandom;
+                    private _treepos = getPosASL (_trees select _treeIndex);
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomPitch = [0.2] call tpw_soap_fnc_syncRandom;
+                    private _pitch = 1 + _randomPitch;
+                    
+                    // Broadcast del sonido para sincronización
+                    ["forest", [_sound, _treepos, tpw_soap_volume * _vol, _pitch, 300]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [10] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 10 + _randomSleep;
+        sleep _sleepTime;
+    };
+};        
+    
+// TRAFFIC - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_traffic = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {        
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 25) then {
+                private _buildings = nearestTerrainObjects [position player, ["house", "building"], 50, true];
+                if (count _buildings > 1) then {
+                    private _building = _buildings select 1;
+                    private _roads = count ((player nearRoads 400) select {isOnRoad _x}) / 400;
+                    private _vol = tpw_soap_volume * tpw_soap_mapfactor * tpw_soap_trafficmult * _roads * _roads * tpw_soap_soundvolmult;
+                    if (_vol > tpw_soap_trafficmult) then {_vol = tpw_soap_trafficmult};
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _sel = [9] call tpw_soap_fnc_syncRandom;
+                    private _sound = format ["TPW_SOUNDS\sounds\traffic\%1.ogg", _sel + 1];
+                    private _pos = getPosASL _building vectorAdd [0,0,20];
+                    
+                    // Broadcast del sonido para sincronización
+                    ["traffic", [_sound, _pos, _vol, 1, 200]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [25] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 20 + _randomSleep;
+        sleep _sleepTime;
+    };
+};        
+    
+// WIND NOISE IN HOUSES - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_windnoise = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active} && {windStr > 0.2}) then {
+            private _chance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_chance < 20) then {
+                private _buildings = nearestObjects [position player, ["House"], 20];
+                if (count _buildings > 0) then {
+                    private _building = _buildings select 0;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomPitch = [0.4] call tpw_soap_fnc_syncRandom;
+                    private _pitch = 0.8 + _randomPitch;
+                    
+                    private _vol = (tpw_soap_volume * tpw_soap_housefxvolume * windStr * 0.5);
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _selWind = [9] call tpw_soap_fnc_syncRandom;
+                    private _sound = format ["TPW_SOUNDS\sounds\house\w%1.ogg", _selWind + 1];
+                    private _pos = getPosASL _building;
+                    
+                    // Broadcast del sonido para sincronización
+                    ["wind", [_sound, _pos, _vol, _pitch, 50]] call tpw_soap_fnc_broadcastSound;
+                    
+                    // A veces añadir un ruido de traqueteo después del viento
+                    // CORREGIDO: Separando la llamada a syncRandom y la comparación
+                    private _rattleChance = [100] call tpw_soap_fnc_syncRandom;
+                    
+                    if (_rattleChance < 60) then {
+                        // CORREGIDO: Separando la llamada a syncRandom
+                        private _randomTime = [10] call tpw_soap_fnc_syncRandom;
+                        sleep _randomTime;
+                        
+                        // CORREGIDO: Separando la llamada a syncRandom
+                        private _selRattle = [6] call tpw_soap_fnc_syncRandom;
+                        private _rattleSound = format ["TPW_SOUNDS\sounds\house\r%1.ogg", _selRattle + 1];
+                        
+                        // Broadcast del ruido de traqueteo para sincronización
+                        ["wind", [_rattleSound, _pos, _vol * 2, _pitch, 50]] call tpw_soap_fnc_broadcastSound;
+                    };
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [20] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 20 + _randomSleep;
+        sleep _sleepTime;
+    };
+};    
+    
+// TRAINS - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_trains = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active} && {diag_tickTime > tpw_soap_nexttrain}) then {
+            private _trainChance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_trainChance < 25) then {
+                private _vol = 0;
+                if (count tpw_soap_nearhouses == 0) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomVol = [20] call tpw_soap_fnc_syncRandom;
+                    _vol = _randomVol * 0.01; // Convertido a valor entre 0 y 0.2
+                } else {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomVol = [100] call tpw_soap_fnc_syncRandom;
+                    _vol = _randomVol * 0.01; // Convertido a valor entre 0 y 1
+                };
+                
+                private _pos = getPosASL player;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _dir = [360] call tpw_soap_fnc_syncRandom;
+                
+                private _posx = (_pos select 0) + (200 * sin _dir); 
+                private _posy = (_pos select 1) + (200 * cos _dir); 
+                private _soundPos = [_posx, _posy, 0];
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _sel = [3] call tpw_soap_fnc_syncRandom;
+                private _sound = format ["TPW_SOUNDS\sounds\train\train%1.ogg", _sel + 1];
+                
+                // CORREGIDO: Separando la llamada a syncRandom para el próximo tiempo
+                private _randomNextTime = [60] call tpw_soap_fnc_syncRandom;
+                tpw_soap_nexttrain = diag_tickTime + 60 + _randomNextTime;
+                
+                // Broadcast del sonido para sincronización
+                ["train", [_sound, _soundPos, _vol, 1, 500]] call tpw_soap_fnc_broadcastSound;
+            };
+        };
+        sleep 15;    
+    };
+};        
+
+// SCREAMS / BARKS / SIRENS IF NEARBY GUNFIRE - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_scream = {
+    // CORREGIDO: Separando la llamada a syncRandom y la comparación
+    if (tpw_soap_master_client && {diag_tickTime > tpw_soap_nextcry}) then {
+        private _screamChance = [10] call tpw_soap_fnc_syncRandom;
+        
+        if (_screamChance < 3) then {
+            // CORREGIDO: Separando la llamada a syncRandom para el próximo tiempo
+            private _randomNextTime = [15] call tpw_soap_fnc_syncRandom;
+            tpw_soap_nextcry = diag_tickTime + _randomNextTime;
+            
+            // CORREGIDO: Separando la llamada a syncRandom para el tiempo de espera
+            private _randomWait = [5] call tpw_soap_fnc_syncRandom;
+            sleep 1 + _randomWait;
+            
+            private _nearhouses = [tpw_soap_radius * 0.75] call tpw_core_fnc_screenhouses;
+            if ((count _nearhouses > 0) && {(_nearhouses select 0 distance player < tpw_soap_radius)} && {!([] call tpw_soap_fnc_indoors)}) then {
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _houseIndex = [count _nearhouses] call tpw_soap_fnc_syncRandom;
+                private _house = _nearhouses select _houseIndex;
+                private _vol = tpw_soap_screamvolume * 2;
+                
+                // CORREGIDO: Separando la llamada a syncRandom
+                private _randomPitch = [0.2] call tpw_soap_fnc_syncRandom;
+                private _pitch = 0.9 + _randomPitch;
+                
+                private _sound = "";
+                
+                // Selección sincronizada de sonido
+                // CORREGIDO: Separando la llamada a syncRandom y la comparación
+                private _soundTypeChance = [100] call tpw_soap_fnc_syncRandom;
+                
+                if (_soundTypeChance > 50) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _selScream = [12] call tpw_soap_fnc_syncRandom;
+                    _sound = format ["TPW_SOUNDS\sounds\fear\%1.ogg", _selScream + 1]; // screams, babies
+                } else {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _selBark = [20] call tpw_soap_fnc_syncRandom;
+                    _sound = format ["TPW_SOUNDS\sounds\animal\dog%1.ogg", _selBark + 1]; // barks
+                };
+                
+                // Broadcast del sonido para sincronización
+                ["scream", [_sound, getPosASL _house, _vol, _pitch, 100]] call tpw_soap_fnc_broadcastSound;
+                
+                // Sirenas en ciudades
+                if (tpw_soap_city) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _randomWaitSiren = [10] call tpw_soap_fnc_syncRandom;
+                    sleep _randomWaitSiren;
+                    
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _selSiren = [4] call tpw_soap_fnc_syncRandom;
+                    _sound = format ["TPW_SOUNDS\sounds\siren\siren%1.ogg", _selSiren + 1]; // sirens
+                    
+                    // Broadcast del sonido de sirena para sincronización
+                    ["scream", [_sound, getPosASL _house, 1.5 * tpw_soap_sirenvolume, _pitch, 250]] call tpw_soap_fnc_broadcastSound;
+                };    
+            };
+        };
+    };
+};
+
+// LAPPING WATER - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_water = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {tpw_soap_active}) then {
+            private _waterChance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_waterChance < 20) then {
+                private _foundWater = false;
+                private _waterPos = [0,0,0];
+                
+                // Buscar agua cerca del jugador
+                for "_i" from 0 to 36 do {
+                    if (_foundWater) exitWith {};
+                    
+                    private _dir = 10 * _i;
+                    private _dist = 5;
+                    private _posx = (position player select 0) + (_dist * sin _dir);
+                    private _posy = (position player select 1) + (_dist * cos _dir);
+                    
+                    if (surfaceIsWater [_posx, _posy]) then {
+                        _waterPos = [_posx, _posy, 0];
+                        _foundWater = true;
+                    };
+                };
+                    
+                if (_foundWater) then {
+                    // CORREGIDO: Separando la llamada a syncRandom
+                    private _sel = [4] call tpw_soap_fnc_syncRandom;
+                    private _water = format ["TPW_SOUNDS\sounds\water\water%1.ogg", _sel + 1];
+                    
+                    // Broadcast del sonido para sincronización
+                    ["water", [_water, _waterPos, 2, 1, 50]] call tpw_soap_fnc_broadcastSound;
+                };
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [10] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 10 + _randomSleep;
+        sleep _sleepTime;
+    };
+};    
+    
+// CAR STEREOS - SINCRONIZADO - CORREGIDO
+tpw_soap_fnc_carmusic = {
+    // Esperar a que la sincronización esté inicializada
+    waitUntil {tpw_soap_sync_initialized};
+    
+    while {true} do {
+        // CORREGIDO: Separando la llamada a syncRandom y la comparación
+        if (tpw_soap_master_client && {!isNil "tpw_car_cararray"} && {tpw_soap_songs > 0}) then {
+            private _carMusicChance = [100] call tpw_soap_fnc_syncRandom;
+            
+            if (_carMusicChance < 30) then {
+                {
+                    private _car = _x;
+                    if (typeName _car == "OBJECT" && {diag_tickTime > _car getVariable ["tpw_car_stereo", 0]}) then {
+                        // CORREGIDO: Separando la llamada a syncRandom
+                        private _songID = [tpw_soap_songs] call tpw_soap_fnc_syncRandom;
+                        private _musicName = format["%1%2", tpw_soap_carmusic, _songID + 1];
+                        
+                        // Actualizar tiempo y transmitir evento de música de auto
+                        _car setVariable ["tpw_car_stereo", diag_tickTime + 180, true];
+                        
+                        // Usar remoteExec para sincronizar entre todos los clientes
+                        [_car, _musicName, 150, 1] remoteExec ["say3D", 0, false];
+                    };
+                } forEach tpw_car_cararray;    
+            };
+        };
+        
+        // CORREGIDO: Separando la llamada a syncRandom
+        private _randomSleep = [15] call tpw_soap_fnc_syncRandom;
+        private _sleepTime = 15 + _randomSleep;
+        sleep _sleepTime;
+    };
+};
+
+// INICIALIZAR SINCRONIZACIÓN Y EJECUTAR SCRIPTS
+[] spawn {
+    // Inicializar sistema de sincronización
+    [] call tpw_soap_fnc_initSync;
+    
+    // Esperar a que la sincronización esté lista
+    waitUntil {tpw_soap_sync_initialized};
+    
+    // Registrar manejador de eventos para eventos de sonido
+    "tpw_soap_sound_event" addPublicVariableEventHandler {
+        private _event = _this select 1;
+        if (!tpw_soap_master_client) then {
+            [_event] call tpw_soap_fnc_processSound;
+        };
+    };
+    
+    // Ejecutar todos los scripts
+    sleep 10;
+    [] spawn tpw_soap_fnc_mainloop;
+    [] spawn tpw_soap_fnc_azanloop;
+    [] spawn tpw_soap_fnc_housenoise;
+    [] spawn tpw_soap_fnc_windnoise;
+    [] spawn tpw_soap_fnc_forest;
+    [] spawn tpw_soap_fnc_phone;
+    [] spawn tpw_soap_fnc_resp;
+    [] spawn tpw_soap_fnc_kids;
+    [] spawn tpw_soap_fnc_traffic;
+    [] spawn tpw_soap_fnc_water;
+    [] spawn tpw_soap_fnc_carmusic;
+    [] spawn tpw_soap_fnc_chainsaws;
+    
+    // Añadir manejador de eventos para disparos cercanos
+    if (tpw_soap_master_client) then {
+        player addEventHandler ["FiredNear", {
+            params ["_unit", "_firer", "_distance", "_weapon", "_muzzle", "_mode", "_ammo", "_gunner"];
+            // Solo procesar si es un disparo de otro jugador o AI, no de nosotros mismos
+            if (_firer != player) then {
+                [] spawn tpw_soap_fnc_scream;
+            };
+        }];
+    };
+    
+    // Trenes en mapas específicos
+    if (toLower worldName in [    
+        "chernarus",
+        "chernarus_summer",
+        "chernarusredux",
+        "chernarus_winter",
+        "chernarus_2035",
+        "cup_chernarus_a3",
+        "tanoa",    
+        "wl_rosche",
+        "xcam_taunus",
+        "gm_weferlingen_summer",
+        "gm_weferlingen_winter",
+        "enoch",
+        "ruha",
+        "stozec",
+        "zdanice",
+        "chernarusplus",
+        "brf_sumava",
+        "swu_public_novogorsk_map"
+    ]) then {
+        // CORREGIDO: Separando la llamada a random
+        private _randomTrainTime = random 60;
+        tpw_soap_nexttrain = diag_tickTime + 30 + _randomTrainTime;
+        [] spawn tpw_soap_fnc_trains;
+    };
+};
+
+// Dummy loop para mantener el script activo
+while {true} do {
+    sleep 10;
+};
