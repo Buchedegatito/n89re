@@ -1,4 +1,4 @@
-if (isDedicated) exitWith {};
+if (isMultiplayer && !isServer) exitWith {};
 if (count _this < 5) exitwith {player sidechat "TPW CORE incorrect/no config, exiting."};
 
 // VARS
