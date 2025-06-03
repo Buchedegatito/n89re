@@ -1,40 +1,42 @@
+// Prevent non-server clients from running initialization
 if (isMultiplayer && !isServer) exitWith {};
-if (count _this < 5) exitwith {player sidechat "TPW CORE incorrect/no config, exiting."};
+if (count _this < 5) exitWith { player sideChat "TPW CORE incorrect/no config, exiting."; };
 
 // VARS
-tpw_core_mapstrings = _this select 0; // Strings to select per map civilians
-tpw_core_blacklist = _this select 1; // Civilians to exclude
-tpw_core_morning = _this select 2; // Reduced ambience before this time. Set to -1 to disable
-tpw_core_night = _this select 3; // Reduced ambience after this time. Set to 25 to disable
-tpw_core_extended_enable = _this select 4; // Enable additional AI animations after recovering from incapacitation
-tpw_core_active = true;
-tpw_mods_version = "20230927"; // will appear on start hint
-tpw_core_fem_civs = [];
-tpw_core_trees = [];
+tpw_core_mapstrings = _this select 0;           publicVariableServer "tpw_core_mapstrings";
+tpw_core_blacklist  = _this select 1;           publicVariableServer "tpw_core_blacklist";
+tpw_core_morning    = _this select 2;           publicVariableServer "tpw_core_morning";
+tpw_core_night      = _this select 3;           publicVariableServer "tpw_core_night";
+tpw_core_extended_enable = _this select 4;      publicVariableServer "tpw_core_extended_enable";
+tpw_core_active     = true;                     publicVariableServer "tpw_core_active";
+tpw_mods_version    = "20230927";               publicVariableServer "tpw_mods_version";
+tpw_core_fem_civs   = [];                       publicVariableServer "tpw_core_fem_civs";
+tpw_core_trees      = [];                       publicVariableServer "tpw_core_trees";
 
 // MAP SPECIFIC MOD DISABLING
-//Maps without roads - no cars
-if (worldname in  ["pja307","pja319"]) then
-	{
-	tpw_car_active = false;
-	tpw_park_active = false;
-	};
+// Maps without roads - no cars
+if (worldName in ["pja307","pja319"]) then {
+    tpw_car_active  = false;                     publicVariableServer "tpw_car_active";
+    tpw_park_active = false;                     publicVariableServer "tpw_park_active";
+} else {
+    tpw_car_active  = true;                      publicVariableServer "tpw_car_active";
+    tpw_park_active = true;                      publicVariableServer "tpw_park_active";
+};
 
 // No aircraft
-if (worldname in ["mak_Jungle","isladuala"]) then
-	{
-	tpw_air_active = false;
-	};
+if (worldName in ["mak_Jungle","isladuala"]) then {
+    tpw_air_active = false;                      publicVariableServer "tpw_air_active";
+} else {
+    tpw_air_active = true;                       publicVariableServer "tpw_air_active";
+};
 
 // Winter 2035 specific
-if (tolower worldname in ["stratis","altis"] && isclass (configfile/"CfgPatches"/"winter_2035")) then
-	{
-	tpw_winter2035 = true;
-	} else
-	{
-	tpw_winter2035 = false;
-	};
-	
+if ( toLower worldName in ["stratis","altis"] && isClass (configFile >> "CfgPatches" >> "winter_2035") ) then {
+    tpw_winter2035 = true;                      publicVariableServer "tpw_winter2035";
+} else {
+    tpw_winter2035 = false;                     publicVariableServer "tpw_winter2035";
+};
+
 // CLOTHES
 _trouserlist = [
 // A3
@@ -739,12 +741,12 @@ _trouserlist = [
 ];
 
 tpw_core_trousers = [];
-	{
-	if (isclass (configfile/"CfgWeapons"/_x)) then 
-		{
-		tpw_core_trousers pushback _x;
-		};
-	} foreach _trouserlist;
+{
+    if (isClass (configFile >> "CfgWeapons" >> _x)) then {
+        tpw_core_trousers pushBack _x;
+    };
+} forEach _trouserlist;
+publicVariableServer "tpw_core_trousers";
 
 _shortlist = [
 // A3
@@ -852,12 +854,12 @@ _shortlist = [
 
 ];
 tpw_core_shorts = [];
-	{
-	if (isclass (configfile/"CfgWeapons"/_x)) then 
-		{
-		tpw_core_shorts pushback _x;
-		};
-	} foreach _shortlist;
+{
+    if (isClass (configFile >> "CfgWeapons" >> _x)) then {
+        tpw_core_shorts pushBack _x;
+    };
+} forEach _shortlist;
+publicVariableServer "tpw_core_shorts";
 
 _hatlist = 
 ["H_Cap_red",
@@ -959,13 +961,12 @@ _hatlist =
 	
 ];
 tpw_core_hats = [];
-	{
-	if (isclass (configfile/"CfgWeapons"/_x)) then 
-		{
-		tpw_core_hats pushback _x;
-		};
-	} foreach _hatlist;
-
+{
+    if (isClass (configFile >> "CfgWeapons" >> _x)) then {
+        tpw_core_hats pushBack _x;
+    };
+} forEach _hatlist;
+publicVariableServer "tpw_core_hats";
 
 _speclist = [
 "G_Spectacles",
@@ -987,57 +988,53 @@ _speclist = [
 "G_Lady_Blue"
 ];
 tpw_core_specs = [];
-	{
-	if (isclass (configfile/"CfgGlasses"/_x)) then 
-		{
-		tpw_core_specs pushback _x;
-		};
-	} foreach _speclist;
+{
+    if (isClass (configFile >> "CfgGlasses" >> _x)) then {
+        tpw_core_specs pushBack _x;
+    };
+} forEach _speclist;
+publicVariableServer "tpw_core_specs";
 
 // Screen out uniforms based on exclusion strings
-for "_i" from 0 to (count tpw_core_trousers - 1) do	
-	{	
-	_item = tpw_core_trousers select _i;
-		{
-		if ([_x,str _item] call BIS_fnc_inString) then
-			{
-			tpw_core_trousers set [_i, -1];
-			};
-		} foreach tpw_core_blacklist;
-	};
+for "_i" from 0 to (count tpw_core_trousers - 1) do {
+    _item = tpw_core_trousers select _i;
+    {
+        if ([_x, str _item] call BIS_fnc_inString) then {
+            tpw_core_trousers set [_i, -1];
+        };
+    } forEach tpw_core_blacklist;
+};
 tpw_core_trousers = tpw_core_trousers - [-1];
+publicVariableServer "tpw_core_trousers";
 
-for "_i" from 0 to (count tpw_core_shorts - 1) do	
-	{	
-	_item = tpw_core_shorts select _i;
-		{
-		if ([_x,str _item] call BIS_fnc_inString) then
-			{
-			tpw_core_shorts set [_i, -1];
-			};
-		} foreach tpw_core_blacklist;
-	};
+for "_i" from 0 to (count tpw_core_shorts - 1) do {
+    _item = tpw_core_shorts select _i;
+    {
+        if ([_x, str _item] call BIS_fnc_inString) then {
+            tpw_core_shorts set [_i, -1];
+        };
+    } forEach tpw_core_blacklist;
+};
 tpw_core_shorts = tpw_core_shorts - [-1];
+publicVariableServer "tpw_core_shorts";
 
-for "_i" from 0 to (count tpw_core_hats - 1) do	
-	{	
-	_item = tpw_core_hats select _i;
-		{
-		if ([_x,str _item] call BIS_fnc_inString) then
-			{
-			tpw_core_hats set [_i, -1];
-			};
-		} foreach tpw_core_blacklist;
-	};
+for "_i" from 0 to (count tpw_core_hats - 1) do {
+    _item = tpw_core_hats select _i;
+    {
+        if ([_x, str _item] call BIS_fnc_inString) then {
+            tpw_core_hats set [_i, -1];
+        };
+    } forEach tpw_core_blacklist;
+};
 tpw_core_hats = tpw_core_hats - [-1];
+publicVariableServer "tpw_core_hats";
 
-tpw_core_fnc_clothes =
-	{
-	private ["_clothes"];
-	
-	// Appropriate clothing for climate
-	if (!isnil "tpw_fog_temp" &&  {tpw_fog_temp < 12 } && {!(tolower worldname in tpw_core_mideast)}) then
-		{
+// Clothing selection function
+tpw_core_fnc_clothes = {
+    private ["_clothes"];
+    
+    // Appropriate clothing for climate
+    if (!isNil "tpw_fog_temp" && tpw_fog_temp < 12 && !(toLower worldName in tpw_core_mideast)) then {
 		_coldhatlist = 
 		[
 		"VSM_Beanie_OD",
@@ -1246,76 +1243,71 @@ tpw_core_fnc_clothes =
 		"TRYK_U_denim_jersey_blu",
 		"TRYK_U_denim_jersey_blk"
 		];
-		tpw_core_trousers = [];
-			{
-			if (isclass (configfile/"CfgWeapons"/_x)) then 
-				{
-				tpw_core_trousers pushback _x;
-				} 
-			} foreach _coldtrouserlist;
-		tpw_core_hats = [];
-			{
-			if (isclass (configfile/"CfgWeapons"/_x)) then 
-				{
-				tpw_core_hats pushback _x;
-				};
-			} foreach _coldhatlist;
+        tpw_core_trousers = [];
+        {
+            if (isClass (configFile >> "CfgWeapons" >> _x)) then {
+                tpw_core_trousers pushBack _x;
+            };
+        } forEach _coldtrouserlist;
+        
+        _coldhatlist = [
 
-		};
-	
-	if (!isnil "tpw_fog_temp" &&  {tpw_fog_temp > 25 } && {!(tolower worldname in tpw_core_mideast)}) then
-		{
-		_clothes = tpw_core_trousers + tpw_core_shorts + tpw_core_shorts  + tpw_core_shorts + tpw_core_shorts  + tpw_core_shorts + tpw_core_shorts;
-		} else
-		{
-		_clothes = tpw_core_trousers;
-		};	
-	_clothes
-	};
+        ];
+        tpw_core_hats = [];
+        {
+            if (isClass (configFile >> "CfgWeapons" >> _x)) then {
+                tpw_core_hats pushBack _x;
+            };
+        } forEach _coldhatlist;
+        
+        publicVariableServer "tpw_core_trousers";
+        publicVariableServer "tpw_core_hats";
+    };
+    
+    if (!isNil "tpw_fog_temp" && tpw_fog_temp > 25 && !(toLower worldName in tpw_core_mideast)) then {
+        _clothes = tpw_core_trousers + tpw_core_shorts + tpw_core_shorts + tpw_core_shorts + tpw_core_shorts + tpw_core_shorts + tpw_core_shorts;
+    } else {
+        _clothes = tpw_core_trousers;
+    };
+    
+    _clothes
+};
 
+// Grab male civilians function
+tpw_core_fnc_grabciv = {
+    private ["_cfg","_str"];
+    tpw_core_civs = [];
+    _cfg = configFile >> "CfgVehicles";
+    _str = _this select 0;
+    for "_i" from 0 to ((count _cfg) - 1) do {
+        if (isClass (_cfg select _i)) then {
+            _cfgName = configName (_cfg select _i);
+            if ((_cfgName isKindOf "camanbase") && getNumber ((_cfg select _i) >> "scope") == 2 && {[_str, str _cfgName] call BIS_fnc_inString}) then {
+                tpw_core_civs set [count tpw_core_civs, _cfgName];
+            };
+        };
+    };
 
-// GRAB CIVS FROM CONFIG
-tpw_core_fnc_grabciv =
-	{
-	private ["_cfg","_str"];
-	tpw_core_civs = [];
-	_cfg = (configFile >> "CfgVehicles");
-	_str = _this select 0;
-	for "_i" from 0 to ((count _cfg) -1) do 
-		{
-		if (isClass ((_cfg select _i) ) ) then 
-			{
-			_cfgName = configName (_cfg select _i);
-			if ( (_cfgName isKindOf "camanbase") && {getNumber ((_cfg select _i) >> "scope") == 2} && {[_str,str _cfgname] call BIS_fnc_inString}) then 
-				{
-				tpw_core_civs set [count tpw_core_civs,_cfgname];
-				};
-			};
-		};		
+    // Use default BIS civs if custom string can't be found
+    if (count tpw_core_civs < 2) then {
+        _str = "c_man";
+        for "_i" from 0 to ((count _cfg) - 1) do {
+            if (isClass (_cfg select _i)) then {
+                _cfgName = configName (_cfg select _i);
+                if ((_cfgName isKindOf "camanbase") && getNumber ((_cfg select _i) >> "scope") == 2 && {[_str, str _cfgName] call BIS_fnc_inString}) then {
+                    tpw_core_civs set [count tpw_core_civs, _cfgName];
+                };
+            };
+        };
+    };
 
-		
-	// Use default BIS civs if custom string can't be found
-	if (count tpw_core_civs < 2)then 
-		{
-		_str = "c_man";
-		for "_i" from 0 to ((count _cfg) -1) do 
-			{
-			if (isClass ((_cfg select _i) ) ) then 
-				{
-				_cfgName = configName (_cfg select _i);
-				if ( (_cfgName isKindOf "camanbase") && {getNumber ((_cfg select _i) >> "scope") == 2} && {[_str,str _cfgname] call BIS_fnc_inString}) then 
-					{
-					tpw_core_civs set [count tpw_core_civs,_cfgname];
-					};
-				};
-			};	
-		};	
-	_str
-	};
-	
-// GRAB FEMALE CIVS FROM CONFIG
-tpw_core_fnc_grabfemciv =
-	{
+    publicVariableServer "tpw_core_civs";
+    
+    _str
+};
+
+// Grab female civilians function
+tpw_core_fnc_grabfemciv = {
 	_women = [
 	"Max_Woman1",
 	"Max_Woman3",
@@ -1338,44 +1330,46 @@ tpw_core_fnc_grabfemciv =
 	"fsog3_gen3_female_natow",
 	"fsog3_gen3_female_ctrg"*/
 	];
-	
-	if (!isnil "tpw_fog_temp" &&  {tpw_fog_temp < 12 } && {!(tolower worldname in tpw_core_mideast)}) then
-		{
-		_women = [
-			"Max_Woman1",
-			"Max_Woman1",
-			"Max_Woman1",
-			"Max_Woman3"];
-		};
-		{
-		if (isclass (configfile/"CfgVehicles"/_x)) then
-			{
-			tpw_core_fem_civs set [count tpw_core_fem_civs,_x];
-			};
-		} foreach _women;
-	};
+    
+    if (!isNil "tpw_fog_temp" && tpw_fog_temp < 12 && !(toLower worldName in tpw_core_mideast)) then {
+        _women = [
+            "Max_Woman1",
+            "Max_Woman1",
+            "Max_Woman1",
+            "Max_Woman3"
+        ];
+    };
+    {
+        if (isClass (configFile >> "CfgVehicles" >> _x)) then {
+            tpw_core_fem_civs set [count tpw_core_fem_civs, _x];
+        };
+    } forEach _women;
 
+    publicVariableServer "tpw_core_fem_civs";
+};
 
-// GRAB FEMALE TAK CIVS FROM CONFIG
-tpw_core_fnc_grabfemtak =
-	{
-	_women = ["Max_Taky_woman1",
-	"Max_Taky_woman2",
-	"Max_Taky_woman5",
-	"Max_Tak2_woman1",
-	"Max_Tak2_woman2",
-	"Max_Tak2_woman4",
-	"Max_Tak_woman2",
-	"Max_Tak_woman4",
-	"Max_Tak_woman6"];		
-		{
-		if (isclass (configfile/"CfgVehicles"/_x)) then
-			{
-			tpw_core_fem_civs set [count tpw_core_fem_civs,_x];
-			};
-		} foreach _women;
-	};	
-	
+// Grab female TAK civilians function
+tpw_core_fnc_grabfemtak = {
+    _women = [
+        "Max_Taky_woman1",
+        "Max_Taky_woman2",
+        "Max_Taky_woman5",
+        "Max_Tak2_woman1",
+        "Max_Tak2_woman2",
+        "Max_Tak2_woman4",
+        "Max_Tak_woman2",
+        "Max_Tak_woman4",
+        "Max_Tak_woman6"
+    ];
+    {
+        if (isClass (configFile >> "CfgVehicles" >> _x)) then {
+            tpw_core_fem_civs set [count tpw_core_fem_civs, _x];
+        };
+    } forEach _women;
+
+    publicVariableServer "tpw_core_fem_civs";
+};
+
 // FEMALE FACES (Max Joiner and Timberwolf)
 tpw_core_femfacelist = [
 "max_facews1",
@@ -1423,30 +1417,27 @@ tpw_core_blackfemfacelist = [
 "facew39"
 ];
 
-
-
 tpw_core_femfaces = [];
-	{
-	if (isclass (configfile/"CfgFaces"/"Man_A3"/_x)) then 
-		{
-		tpw_core_femfaces pushback _x;
-		};
-	} foreach tpw_core_femfacelist;	
-	
+{
+    if (isClass (configFile >> "CfgFaces" >> "Man_A3" >> _x)) then {
+        tpw_core_femfaces pushBack _x;
+    };
+} forEach tpw_core_femfacelist;
+publicVariableServer "tpw_core_femfaces";
+
 tpw_core_blackfemfaces = [];
-	{
-	if (isclass (configfile/"CfgFaces"/"Man_A3"/_x)) then 
-		{
-		tpw_core_blackfemfaces pushback _x;
-		};
-	} foreach tpw_core_blackfemfacelist;		
+{
+    if (isClass (configFile >> "CfgFaces" >> "Man_A3" >> _x)) then {
+        tpw_core_blackfemfaces pushBack _x;
+    };
+} forEach tpw_core_blackfemfacelist;
+publicVariableServer "tpw_core_blackfemfaces";
 
 // REGION SPECIFIC CIVILIANS
-tpw_core_fnc_civs =
-	{
-	private ["_civstring","_mideast","_african","_asian","_ethnicity","_ext"];
-	private _civstrings = _this select 0;
-	
+tpw_core_fnc_civs = {
+    private ["_civstring","_mideast","_african","_asian","_ethnicity"];
+    private _civstrings = _this select 0;
+
 	tpw_core_european = [	
 		"bush_island_51",
 		"carraigdubh",
@@ -1642,292 +1633,239 @@ tpw_core_fnc_civs =
 		"islapera"
 	];	
 	
-	// Ethnicity based on worldname
-	_ethnicity = "default"; // Default
-	if (tolower worldname in tpw_core_european) then {_ethnicity = "european"};
-	if (tolower worldname in tpw_core_greek) then {_ethnicity = "greek"};
-	if (tolower worldname in tpw_core_mideast) then {_ethnicity = "mideast"};
-	if (tolower worldname in tpw_core_african) then {_ethnicity = "african"};
-	if (tolower worldname in tpw_core_asian) then {_ethnicity = "asian"};
-	if (tolower worldname in tpw_core_oceania) then {_ethnicity = "oceania"};
-	
-	// Greeks (eg Altis/Stratis)
-	if (_ethnicity == "greek") then 
-		{
-		_civstring = [_civstrings select 0] call tpw_core_fnc_grabciv;
-	
-		// Screen out non-Greeks from BIS civs
-		if (_civstring == "c_man") then
-			{
-			for "_i" from 0 to (count tpw_core_civs - 1) do	
-				{	
-				_civ = tpw_core_civs select _i;
-				if ((["unarmed",str _civ] call BIS_fnc_inString)  || (["euro",str _civ] call BIS_fnc_inString) || (["asia",str _civ] call BIS_fnc_inString)||(["afro",str _civ] call BIS_fnc_inString)||(["tanoa",str _civ] call BIS_fnc_inString)) then
-					{
-					tpw_core_civs set [_i, -1];
-					};
-				};
-			tpw_core_civs = tpw_core_civs - [-1];
-			};
-		// Females
-		[] call tpw_core_fnc_grabfemciv;	
-		};	
-	
-	// Oceania (eg Tanoa)
-	if (_ethnicity == "oceania") then 
-		{
-		_civstring = [_civstrings select 1] call tpw_core_fnc_grabciv;
-	
-		// Screen out non-Tanoans from BIS civs
-		if (_civstring == "c_man") then
-			{
-			for "_i" from 0 to (count tpw_core_civs - 1) do	
-				{	
-				_civ = tpw_core_civs select _i;
-				if !(["tanoa",str _civ] call BIS_fnc_inString) then
-					{
-					tpw_core_civs set [_i, -1];
-					};
-				};
-			tpw_core_civs = tpw_core_civs - [-1];	
-			};
-		};	
-	
-	// Europeans (eg Chernarus)
-	if (_ethnicity == "european") then 
-		{
-		_civstring = [_civstrings select 2] call tpw_core_fnc_grabciv;
-	
-		// Screen out non-Europeans from BIS civs
-		if (_civstring == "c_man") then
-			{
-			for "_i" from 0 to (count tpw_core_civs - 1) do	
-				{	
-				_civ = tpw_core_civs select _i;
-				if !(["euro",str _civ] call BIS_fnc_inString) then
-					{
-					tpw_core_civs set [_i, -1];
-					};
-				};
-			tpw_core_civs = tpw_core_civs - [-1];		
-			};
+    // Ethnicity based on worldName
+    _ethnicity = "default";
+    if (toLower worldName in tpw_core_european) then { _ethnicity = "european"; };
+    if (toLower worldName in tpw_core_greek)    then { _ethnicity = "greek";     };
+    if (toLower worldName in tpw_core_mideast)  then { _ethnicity = "mideast";   };
+    if (toLower worldName in tpw_core_african)  then { _ethnicity = "african";   };
+    if (toLower worldName in tpw_core_asian)    then { _ethnicity = "asian";     };
+    if (toLower worldName in tpw_core_oceania)  then { _ethnicity = "oceania";   };
 
-		// Females
-		[] call tpw_core_fnc_grabfemciv;	
-		};
-		
-	// Mid East (eg Takistan)
-	if (_ethnicity == "mideast") then 
-		{
-		_civstring = [_civstrings select 3] call tpw_core_fnc_grabciv;
-	
-		// Use Persian soldiers as civs
-		if (_civstring == "c_man") then
-			{
-			tpw_core_civs = ["o_soldier_f"];	
-			};
-		
-		// Females
-		[] call tpw_core_fnc_grabfemtak;		
-			
-		};
+    // Greeks
+    if (_ethnicity == "greek") then {
+        _civstring = [_civstrings select 0] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            for "_i" from 0 to (count tpw_core_civs - 1) do {
+                _civ = tpw_core_civs select _i;
+                if ((["unarmed", str _civ] call BIS_fnc_inString) || (["euro", str _civ] call BIS_fnc_inString) || (["asia", str _civ] call BIS_fnc_inString) || (["afro", str _civ] call BIS_fnc_inString) || (["tanoa", str _civ] call BIS_fnc_inString)) then {
+                    tpw_core_civs set [_i, -1];
+                };
+            };
+            tpw_core_civs = tpw_core_civs - [-1];
+        };
+        [] call tpw_core_fnc_grabfemciv;
+    };
 
-	// Africans (eg N'Ziwasogo)
-	if (_ethnicity == "african") then 
-		{
-		_civstring = [_civstrings select 4] call tpw_core_fnc_grabciv;
-	
-		// Screen out non-Africans from BIS civs
-		if (_civstring == "c_man") then
-			{
-			for "_i" from 0 to (count tpw_core_civs - 1) do	
-				{	
-				_civ = tpw_core_civs select _i;
-				if !(["afro",str _civ] call BIS_fnc_inString) then
-					{
-					tpw_core_civs set [_i, -1];
-					};
-				};
-			tpw_core_civs = tpw_core_civs - [-1];	
-			};
+    // Oceania
+    if (_ethnicity == "oceania") then {
+        _civstring = [_civstrings select 1] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            for "_i" from 0 to (count tpw_core_civs - 1) do {
+                _civ = tpw_core_civs select _i;
+                if !(["tanoa", str _civ] call BIS_fnc_inString) then {
+                    tpw_core_civs set [_i, -1];
+                };
+            };
+            tpw_core_civs = tpw_core_civs - [-1];
+        };
+    };
 
-		// Females
-		[] call tpw_core_fnc_grabfemciv;	
-			
-		};
-		
-	// Asians (eg Prei Khmaoch Luong)
-	if (_ethnicity == "asian") then 
-		{
-		_civstring = [_civstrings select 5] call tpw_core_fnc_grabciv;
-	
-		// Screen out non-Asians from BIS civs
-		if (_civstring == "c_man") then
-			{
-			for "_i" from 0 to (count tpw_core_civs - 1) do	
-				{	
-				_civ = tpw_core_civs select _i;
-				if !(["asia",str _civ] call BIS_fnc_inString) then
-					{
-					tpw_core_civs set [_i, -1];
-					};
-				};
-			tpw_core_civs = tpw_core_civs - [-1];	
-			};
-		};	
+    // Europeans
+    if (_ethnicity == "european") then {
+        _civstring = [_civstrings select 2] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            for "_i" from 0 to (count tpw_core_civs - 1) do {
+                _civ = tpw_core_civs select _i;
+                if !(["euro", str _civ] call BIS_fnc_inString) then {
+                    tpw_core_civs set [_i, -1];
+                };
+            };
+            tpw_core_civs = tpw_core_civs - [-1];
+        };
+        [] call tpw_core_fnc_grabfemciv;
+    };
 
-	// Default - ethnic mix
-	if (_ethnicity == "default") then 
-		{
-		_civstring = "c_man";
-		_civstring = [_civstring] call tpw_core_fnc_grabciv;
-	
-		// Screen out unarmed combatants only
-		if (_civstring == "c_man") then
-			{
-			for "_i" from 0 to (count tpw_core_civs - 1) do	
-				{	
-				_civ = tpw_core_civs select _i;
-				if (["unarmed",str _civ] call BIS_fnc_inString) then
-					{
-					tpw_core_civs set [_i, -1];
-					};
-				};
-			tpw_core_civs = tpw_core_civs - [-1];	
-			};
-		// Females
-		[] call tpw_core_fnc_grabfemciv;	
-		};	
+    // Mid East
+    if (_ethnicity == "mideast") then {
+        _civstring = [_civstrings select 3] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            tpw_core_civs = ["o_soldier_f"];
+        };
+        [] call tpw_core_fnc_grabfemtak;
+    };
 
-	// No pilot, diver, VR civs	
-	for "_i" from 0 to (count tpw_core_civs - 1) do	
-		{	
-		_unit = tpw_core_civs select _i;
-		if ((["pilot",str _unit] call BIS_fnc_inString)||(["diver",str _unit] call BIS_fnc_inString)||(["vr",str _unit] call BIS_fnc_inString)) then
-			{
-			tpw_core_civs set [_i, -1];
-			};
-		};	
-		
-	// User blacklist
-	for "_i" from 0 to (count tpw_core_civs - 1) do	
-		{	
-		_unit = tpw_core_civs select _i;
-			{
-			if ([_x,str _unit] call BIS_fnc_inString) then
-				{
-				tpw_core_civs set [_i, -1];
-				};
-			} foreach tpw_core_blacklist;
-		};
-	tpw_core_civs = tpw_core_civs - [-1];
+    // Africans
+    if (_ethnicity == "african") then {
+        _civstring = [_civstrings select 4] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            for "_i" from 0 to (count tpw_core_civs - 1) do {
+                _civ = tpw_core_civs select _i;
+                if !(["afro", str _civ] call BIS_fnc_inString) then {
+                    tpw_core_civs set [_i, -1];
+                };
+            };
+            tpw_core_civs = tpw_core_civs - [-1];
+        };
+        [] call tpw_core_fnc_grabfemciv;
+    };
 
-		
-	tpw_core_ethnicity = _ethnicity;	
-	};	
+    // Asians
+    if (_ethnicity == "asian") then {
+        _civstring = [_civstrings select 5] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            for "_i" from 0 to (count tpw_core_civs - 1) do {
+                _civ = tpw_core_civs select _i;
+                if !(["asia", str _civ] call BIS_fnc_inString) then {
+                    tpw_core_civs set [_i, -1];
+                };
+            };
+            tpw_core_civs = tpw_core_civs - [-1];
+        };
+    };
 
-// FUNCTION TO SPAWN RANDOM MALE AND FEMALE CIVS	
-tpw_core_fnc_spawnciv = 
-	{
-	private ["_spawnpos","_sqname","_clothes","_civ","_civtype","_faces","_face"];
-	_spawnpos = _this select 0;
-	_sqname = creategroup [civilian,true];
-	_clothes = [] call tpw_core_fnc_clothes;
-	// Male
-	if (random 1 < 0.75) then
-		{
-		_civtype = selectrandom tpw_core_civs;
-		_civ = _sqname createUnit [_civtype,_spawnpos, [], 0, "FORM"];
-		} else
-		{
-		// Female
-		if (count tpw_core_fem_civs > 0) then
-			{
-			_civtype = selectrandom tpw_core_fem_civs;
-			_civ = _sqname createUnit [_civtype,_spawnpos, [], 0, "FORM"];
-			sleep 0.2;
-			removevest _civ;
-			removeheadgear _civ;
-			removeallweapons _civ;
-			removegoggles _civ;
-			removeAllAssignedItems _civ;
-			_face = selectrandom tpw_core_femfaces;
-			if (tolower worldname in tpw_core_african) then
-				{
-				_face = selectrandom tpw_core_blackfemfaces;
-				};
-			_civ setface _face;
-			} else
-			{
-			_civtype = selectrandom tpw_core_civs;
-			_civ = _sqname createUnit [_civtype,_spawnpos, [], 0, "FORM"];
-			};
-		if (!isnil "tpw_fog_temp" && {tpw_fog_temp < 12}) then 
-			{
-			_civ addheadgear (selectrandom tpw_core_hats);
-			};	
-		};
-	 // Random uniform if using BIS male civs
-	if (["c_man",str _civtype] call BIS_fnc_inString) then
-		{
-		_civ forceAddUniform (selectrandom _clothes);
-		removeheadgear _civ;
-		if (random 1 > 0.5 || (!isnil "tpw_fog_temp" && {tpw_fog_temp < 12})) then 
-			{
-			_civ addheadgear (selectrandom tpw_core_hats);
-			};
-		removegoggles _civ;	
-		removevest _civ;
-		removebackpack _civ;
-		if (random 1 > 0.5) then
-			{
-			_civ addgoggles (selectrandom tpw_core_specs);
-			};
-		};	
-		
-	// Mid east civilians
-	if (["o_soldier",str _civtype] call BIS_fnc_inString) then
-		{
-		// Redress soldiers as civs
-		_civ forceAddUniform (selectrandom _clothes);
-		removeheadgear _civ;
-		_civ addheadgear (selectrandom tpw_core_hats);
-		removebackpack _civ;
-		removegoggles _civ;
-		removevest _civ;	
-		_civ unassignItem "NVGoggles_OPFOR";
-		_civ removeItem "NVGoggles_OPFOR";
-		removeallweapons _civ; 
-		};		
-	
-	// No specs on mideast civs
-	if (tolower worldname in tpw_core_mideast) then
-		{
-		removegoggles _civ;
-		};
-		
-	// Increase variety of SOF	civs
-	if ((count getobjecttextures _civ > 1) && {["panther_sof\data\jeans",(getobjecttextures _civ select 1)] call BIS_fnc_inString})then
-		{
-		_civ setobjecttexture [1, selectrandom ["panther_sof\data\jeans\jeans_h_gris_co.paa","panther_sof\data\jeans\jeans_h_bleu_co.paa","panther_sof\data\jeans\jeans_h_bluefonce_co.paa","panther_sof\data\jeans\jeans_h_gris_co.paa","panther_sof\data\jeans\jeans_h_noir_co.paa"]];
-		};
+    // Default
+    if (_ethnicity == "default") then {
+        _civstring = "c_man";
+        _civstring = [_civstring] call tpw_core_fnc_grabciv;
+        if (_civstring == "c_man") then {
+            for "_i" from 0 to (count tpw_core_civs - 1) do {
+                _civ = tpw_core_civs select _i;
+                if (["unarmed", str _civ] call BIS_fnc_inString) then {
+                    tpw_core_civs set [_i, -1];
+                };
+            };
+            tpw_core_civs = tpw_core_civs - [-1];
+        };
+        [] call tpw_core_fnc_grabfemciv;
+    };
 
-	if ((count getobjecttextures _civ > 1) && {["panther_sof\data\cargo",(getobjecttextures _civ select 1)] call BIS_fnc_inString})then
-		{
-		_civ setobjecttexture [1, selectrandom ["panther_sof\data\cargo\cargopants_beige_co.paa","panther_sof\data\cargo\cargopants_black_co.paa""panther_sof\data\cargo\cargopants_blue_co.paa""panther_sof\data\cargo\cargopants_green_co.paa"]];
-		};
-	
-	if ((count getobjecttextures _civ > 2) && {["panther_sof_opfor\data\sneakers",(getobjecttextures _civ select 2)] call BIS_fnc_inString})then
-		{
-		_civ setobjecttexture [2, selectrandom ["panther_sof_opfor\data\sneakers\sneakers_black_co.paa","panther_sof_opfor\data\sneakers\sneakers_tan_co.paa","panther_sof_opfor\data\sneakers\sneakers_gray_co.paa","panther_sof_opfor\data\sneakers\sneakers_white_co.paa"]];
-		};	
-	if ((count getobjecttextures _civ > 2) && {["panther_sof\data\hikingboots",(getobjecttextures _civ select 2)] call BIS_fnc_inString})then
-		{
-		_civ setobjecttexture [2, selectrandom ["panther_sof\data\hikingboots\hikingboots_low_beige_co.paa","panther_sof\data\hikingboots\hikingboots_low_blue_co.paa","panther_sof\data\hikingboots\hikingboots_low_red_co.paa"]];
-		};	
-		
-	_civ	
-	};	
+    // Remove pilots, divers, VR
+    for "_i" from 0 to (count tpw_core_civs - 1) do {
+        _unit = tpw_core_civs select _i;
+        if ((["pilot", str _unit] call BIS_fnc_inString) || (["diver", str _unit] call BIS_fnc_inString) || (["vr", str _unit] call BIS_fnc_inString)) then {
+            tpw_core_civs set [_i, -1];
+        };
+    };
+    tpw_core_civs = tpw_core_civs - [-1];
+
+    // User blacklist
+    for "_i" from 0 to (count tpw_core_civs - 1) do {
+        _unit = tpw_core_civs select _i;
+        { if ([_x, str _unit] call BIS_fnc_inString) then { tpw_core_civs set [_i, -1]; } } forEach tpw_core_blacklist;
+    };
+    tpw_core_civs = tpw_core_civs - [-1];
+
+    tpw_core_ethnicity = _ethnicity;            publicVariableServer "tpw_core_ethnicity";
+    publicVariableServer "tpw_core_civs";
+};
+
+// FUNCTION TO SPAWN RANDOM MALE AND FEMALE CIVS
+tpw_core_fnc_spawnciv = {
+    private ["_spawnpos","_sqname","_clothes","_civ","_civtype","_faces","_face"];
+    _spawnpos = _this select 0;
+    _sqname = createGroup [civilian, true];
+    _clothes = [] call tpw_core_fnc_clothes;
+
+    // Male
+    if (random 1 < 0.75) then {
+        _civtype = selectRandom tpw_core_civs;
+        _civ = _sqname createUnit [_civtype, _spawnpos, [], 0, "FORM"];
+    } else {
+        // Female
+        if (count tpw_core_fem_civs > 0) then {
+            _civtype = selectRandom tpw_core_fem_civs;
+            _civ = _sqname createUnit [_civtype, _spawnpos, [], 0, "FORM"];
+            sleep 0.2;
+            removeVest _civ;
+            removeHeadgear _civ;
+            removeAllWeapons _civ;
+            removeGoggles _civ;
+            removeAllAssignedItems _civ;
+            _face = selectRandom tpw_core_femfaces;
+            if (toLower worldName in tpw_core_african) then {
+                _face = selectRandom tpw_core_blackfemfaces;
+            };
+            _civ setFace _face;
+        } else {
+            _civtype = selectRandom tpw_core_civs;
+            _civ = _sqname createUnit [_civtype, _spawnpos, [], 0, "FORM"];
+        };
+        if (!isNil "tpw_fog_temp" && tpw_fog_temp < 12) then {
+            _civ addHeadgear (selectRandom tpw_core_hats);
+        };
+    };
+
+    // Random uniform if using BIS male civs
+    if (["c_man", str _civtype] call BIS_fnc_inString) then {
+        _civ forceAddUniform (selectRandom _clothes);
+        removeHeadgear _civ;
+        if (random 1 > 0.5 || (!isNil "tpw_fog_temp" && tpw_fog_temp < 12)) then {
+            _civ addHeadgear (selectRandom tpw_core_hats);
+        };
+        removeGoggles _civ;
+        removeVest _civ;
+        removeBackpack _civ;
+        if (random 1 > 0.5) then {
+            _civ addGoggles (selectRandom tpw_core_specs);
+        };
+    };
+
+    // Mid east civilians
+    if (["o_soldier", str _civtype] call BIS_fnc_inString) then {
+        // Redress soldiers as civs
+        _civ forceAddUniform (selectRandom _clothes);
+        removeHeadgear _civ;
+        _civ addHeadgear (selectRandom tpw_core_hats);
+        removeBackpack _civ;
+        removeGoggles _civ;
+        removeVest _civ;
+        _civ unassignItem "NVGoggles_OPFOR";
+        _civ removeItem "NVGoggles_OPFOR";
+        removeAllWeapons _civ;
+    };
+
+    // No specs on mideast civs
+    if (toLower worldName in tpw_core_mideast) then {
+        removeGoggles _civ;
+    };
+
+    // Increase variety of SOF civs
+    if ((count getObjectTextures _civ > 1) && {["panther_sof/data/jeans",(getObjectTextures _civ select 1)] call BIS_fnc_inString}) then {
+        _civ setObjectTexture [1, selectRandom [
+            "panther_sof/data/jeans/jeans_h_gris_co.paa",
+            "panther_sof/data/jeans/jeans_h_bleu_co.paa",
+            "panther_sof/data/jeans/jeans_h_bluefonce_co.paa",
+            "panther_sof/data/jeans/jeans_h_gris_co.paa",
+            "panther_sof/data/jeans/jeans_h_noir_co.paa"
+        ]];
+    };
+    if ((count getObjectTextures _civ > 1) && {["panther_sof/data/cargo",(getObjectTextures _civ select 1)] call BIS_fnc_inString}) then {
+        _civ setObjectTexture [1, selectRandom [
+            "panther_sof/data/cargo/cargopants_beige_co.paa",
+            "panther_sof/data/cargo/cargopants_black_co.paa",
+            "panther_sof/data/cargo/cargopants_blue_co.paa",
+            "panther_sof/data/cargo/cargopants_green_co.paa"
+        ]];
+    };
+    if ((count getObjectTextures _civ > 2) && {["panther_sof_opfor/data/sneakers",(getObjectTextures _civ select 2)] call BIS_fnc_inString}) then {
+        _civ setObjectTexture [2, selectRandom [
+            "panther_sof_opfor/data/sneakers/sneakers_black_co.paa",
+            "panther_sof_opfor/data/sneakers/sneakers_tan_co.paa",
+            "panther_sof_opfor/data/sneakers/sneakers_gray_co.paa",
+            "panther_sof_opfor/data/sneakers/sneakers_white_co.paa"
+        ]];
+    };
+    if ((count getObjectTextures _civ > 2) && {["panther_sof/data/hikingboots",(getObjectTextures _civ select 2)] call BIS_fnc_inString}) then {
+        _civ setObjectTexture [2, selectRandom [
+            "panther_sof/data/hikingboots/hikingboots_low_beige_co.paa",
+            "panther_sof/data/hikingboots/hikingboots_low_blue_co.paa",
+            "panther_sof/data/hikingboots/hikingboots_low_red_co.paa"
+        ]];
+    };
+
+    _civ
+};
 
 // HABITABLE HOUSES
 // Core and DLC buildings
@@ -3276,284 +3214,251 @@ tpw_core_habitable_houses = [
 "Land_juju_opx2_corner1",
 "Land_juju_opx2_h2"
 ];
+publicVariableServer "tpw_core_habitable_houses";
 
-// SUN ANGLE - ORIGINAL CODE BY CARLGUSTAFFA
-tpw_core_fnc_sunangle =
-	{
-	private ["_lat","_day","_hour"];
-	while {true} do 
-		{
-		_lat = -1 * getNumber(configFile >> "CfgWorlds" >> worldName >> "latitude");
-		_day = 360 * (dateToNumber date);
-		_hour = (daytime / 24) * 360;
-		tpw_core_sunangle = ((12 * cos(_day) - 78) * cos(_lat) * cos(_hour)) - (24 * sin(_lat) * cos(_day));  
-		sleep 33.33; 
-		};
-	};	
-	
-// DETERMINE UNIT'S WEAPON TYPE 
-tpw_core_fnc_weptype =
-	{
-	private["_unit","_weptype","_cw","_hw","_pw","_sw"];
-	_unit = _this select 0;	
-	
-	// Weapon type
-	_cw = currentweapon _unit;
-	_hw = handgunweapon _unit;
-	_pw = primaryweapon _unit;
-	_sw = secondaryweapon _unit;
-	 switch _cw do
-		{
-		case "": 
-			{
-			_weptype = 0;
-			};
-		case _hw: 
-			{
-			_weptype = 1;
-			};
-		case _pw: 
-			{
-			_weptype = 2;
-			};
-		case _sw: 
-			{
-			_weptype = 3;
-			};
-		default
-			{
-			_weptype = 0;
-			};	
-		};
-	_unit setvariable ["tpw_core_weptype",_weptype];
-	};
-	
+// SUN ANGLE
+tpw_core_fnc_sunangle = {
+    private ["_lat","_day","_hour"];
+    while { true } do {
+        _lat  = -1 * getNumber(configFile >> "CfgWorlds" >> worldName >> "latitude");
+        _day  = 360 * (dateToNumber date);
+        _hour = (daytime / 24) * 360;
+        tpw_core_sunangle = ((12 * cos _day - 78) * cos _lat * cos _hour) - (24 * sin _lat * cos _day);
+        publicVariableServer "tpw_core_sunangle";
+        sleep 33.33;
+    };
+};
+0 = [] spawn tpw_core_fnc_sunangle;
+
+// DETERMINE UNIT'S WEAPON TYPE
+tpw_core_fnc_weptype = {
+    private ["_unit","_weptype","_cw","_hw","_pw","_sw"];
+    _unit = _this select 0;
+    _cw = currentWeapon _unit;
+    _hw = handgunWeapon  _unit;
+    _pw = primaryWeapon  _unit;
+    _sw = secondaryWeapon _unit;
+    switch _cw do {
+        case "":      { _weptype = 0; };
+        case _hw:     { _weptype = 1; };
+        case _pw:     { _weptype = 2; };
+        case _sw:     { _weptype = 3; };
+        default      { _weptype = 0; };
+    };
+    _unit setVariable ["tpw_core_weptype", _weptype, true];
+};
+
 // PREVENT DEAD UNITS FROM FALLING THROUGH GROUND
-tpw_core_fnc_dead =
-	{	
-	private ["_unit","_ct","_dpos","_ipos"];
-	_unit = _this select 0;	
-	_ct = 0;
-	waituntil
-		{
-		sleep 0.2;
-		_ct = _ct + 1;
-		_dpos = getposatl _unit;
-		(_dpos select 2 < -0.25 || isnull _unit || _ct > 10)
-		};
-	if (!(isnull _unit) && _ct < 11) then
-		{
-		_ipos = getposatl _unit;
-		_ipos set[2,0];
-		_unit setposatl _ipos;
-		};
-	};	
+tpw_core_fnc_dead = {
+    private ["_unit","_ct","_dpos","_ipos"];
+    _unit = _this select 0;
+    _ct = 0;
+    waitUntil {
+        sleep 0.2;
+        _ct = _ct + 1;
+        _dpos = getPosATL _unit;
+        (_dpos select 2 < -0.25) || isNull _unit || (_ct > 10)
+    };
+    if (!isNull _unit && _ct < 11) then {
+        _ipos = getPosATL _unit;
+        _ipos set [2,0];
+        _unit setPosATL _ipos;
+    };
+};
 
 // DISABLE UNIT WRITHING ON GROUND
-tpw_core_fnc_disable = 
-	{
-	private ["_unit","_anims","_ct"];
-	_unit = _this select 0;		
-	if !(alive _unit) exitwith {};
-	if (_unit == player) exitwith {};
-	if (_unit getvariable["tpw_core_disabled",0] == 1) exitwith {};
-	_unit setvariable ["tpw_core_disabled",1];
-	_unit setvariable ["tpw_core_enabled",0];
-	_unit setunconscious true;
-	_unit disableai "all";
-	_ct = 0;	
-	waituntil
-		{
-		_unit disableai "all";
-		sleep 1;
-		_ct = _ct + 1;
-		(animationstate _unit == "unconsciousrevivedefault" || _ct == 10)
-		};	
-	_unit disableai "all";
-	_unit setunconscious false;	
-	_anims = ["Acts_InjuredAngryRifle01","Acts_InjuredCoughRifle02","Acts_InjuredLookingRifle01","Acts_InjuredLookingRifle02","Acts_InjuredLookingRifle03","Acts_InjuredLookingRifle04","Acts_InjuredLookingRifle05"];
-	if !(alive _unit) exitwith {};
-	_unit setdir (getdir _unit + 150);
-	_unit switchmove selectrandom _anims;
-	if (isclass (configfile/"CfgPatches"/"SSD_DeathScreams")) then 
-		{
-		_unit say3d selectrandom [format ["SSD_RattleStomach%1",ceil random 25],format ["SSD_RattleOther%1",ceil random 12],format ["SSD_RattleHeart%1",ceil random 25],format ["SSD_RattleHeart%1",ceil random 25]];
-		};
-	};
+tpw_core_fnc_disable = {
+    private ["_unit","_anims","_ct"];
+    _unit = _this select 0;
+    if !(alive _unit) exitWith {};
+    if (_unit == player) exitWith {};
+    if (_unit getVariable ["tpw_core_disabled",0] == 1) exitWith {};
+    _unit setVariable ["tpw_core_disabled",1,true];
+    _unit setVariable ["tpw_core_enabled",0,true];
+    _unit setUnconscious true;
+    _unit disableAI "all";
+    _ct = 0;
+    waitUntil {
+        _unit disableAI "all";
+        sleep 1;
+        _ct = _ct + 1;
+        (animationState _unit == "unconsciousrevivedefault") || (_ct == 10)
+    };
+    _unit setUnconscious false;
+    _anims = ["Acts_InjuredAngryRifle01","Acts_InjuredCoughRifle02","Acts_InjuredLookingRifle01","Acts_InjuredLookingRifle02","Acts_InjuredLookingRifle03","Acts_InjuredLookingRifle04","Acts_InjuredLookingRifle05"];
+    if !(alive _unit) exitWith {};
+    _unit setDir (getDir _unit + 150);
+    _unit switchMove selectRandom _anims;
+    if (isClass(configFile >> "CfgPatches" >> "SSD_DeathScreams")) then {
+        _unit say3D selectRandom [
+            format ["SSD_RattleStomach%1",ceil random 25],
+            format ["SSD_RattleOther%1",ceil random 12],
+            format ["SSD_RattleHeart%1",ceil random 25],
+            format ["SSD_RattleHeart%1",ceil random 25]
+        ];
+    };
+};
 
 // RE-ENABLE UNIT
-tpw_core_fnc_enable = 
-	{
-	private ["_unit"];
-	_unit = _this select 0;		
-
-	if !(alive _unit) exitwith {};
-	if (damage _unit > 0.9) exitwith {};
-	if (_unit == player) exitwith {};
-	if (_unit getvariable["tpw_core_enabled",1] > 0) exitwith {};
-	_unit setvariable ["tpw_core_enabled",0.5];
-	_unit setvariable ["tpw_core_disabled",0];	
-	_unit setvariable ["tpw_core_injurymultiplier",random 1]; 
-	sleep 5 + random 15;	
-	_unit setdir (getdir _unit - 150);
-	_unit switchmove "unconsciousrevivedefault";
-	_unit setunconscious false;	
-	_unit enableai "all";	
-	_unit setunitpos "auto";	
-	_unit setcaptive false;
-	_unit setvariable ["tpw_core_enabled",1];
-	};
-
+tpw_core_fnc_enable = {
+    private ["_unit"];
+    _unit = _this select 0;
+    if !(alive _unit) exitWith {};
+    if (damage _unit > 0.9) exitWith {};
+    if (_unit == player) exitWith {};
+    if (_unit getVariable ["tpw_core_enabled",1] > 0) exitWith {};
+    _unit setVariable ["tpw_core_enabled",0.5,true];
+    _unit setVariable ["tpw_core_disabled",0,true];
+    _unit setVariable ["tpw_core_injurymultiplier",random 1,true];
+    sleep 5 + random 15;
+    _unit setDir (getDir _unit - 150);
+    _unit switchMove "unconsciousrevivedefault";
+    _unit setUnconscious false;
+    _unit enableAI "all";
+    _unit setUnitPos "auto";
+    _unit setCaptive false;
+    _unit setVariable ["tpw_core_enabled",1,true];
+};
 
 // SORT ARRAY OF OBJECTS BASED ON DISTANCE TO PLAYER
-tpw_core_fnc_arraysort =
-	{
-	private _origarray = _this select 0;
-	private _distarray = _origarray apply {[_x distance player, _x]}; 
-	_distarray sort true;
-	private _sortedarray = [];
-	{_sortedarray pushback (_x select 1)} foreach _distarray;	
-	_sortedarray
-	};
-	
-tpw_core_fnc_arrayrevsort =
-	{
-	private _origarray = _this select 0;
-	private _distarray = _origarray apply {[_x distance player, _x]}; 
-	_distarray sort false;
-	private _sortedarray = [];
-	{_sortedarray pushback (_x select 1)} foreach _distarray;	
-	_sortedarray
-	};	
-	
-// OBJECT SCALE
-tpw_core_fnc_scale = 
-	{
-	private _obj = _this select 0;
-	private _scale = _this select 1;
-	private _pos = getposatl _obj;
-	_obj setobjectscale _scale;
-	sleep 0.05;
-	_obj setposatl _pos;
-	};	
-	
-// NEAR TREES
-tpw_core_fnc_neartrees = 
-	{
-	private _pos = _this select 0;
-	private _radius = _this select 1;
-	_neartrees = tpw_core_trees select {_x distance _pos < _radius};
-	_neartrees
-	};	
+tpw_core_fnc_arraysort = {
+    private _origarray = _this select 0;
+    private _distarray = _origarray apply { [_x distance player, _x] };
+    _distarray sort true;
+    private _sortedarray = [];
+    { _sortedarray pushBack (_x select 1) } forEach _distarray;
+    _sortedarray
+};
 
-tpw_core_fnc_nearvegetation = 
-	{
-	private _pos = _this select 0;
-	private _radius = _this select 1;
-	_nearvegetation = tpw_core_vegetation select {_x distance _pos < _radius};
-	_nearvegetation
-	};		
-	
-// SCAN WHETHER THERE IS NEARBY BATTLE (GUNFIRE/EXPLOSIONS/GRENADES)	
+tpw_core_fnc_arrayrevsort = {
+    private _origarray = _this select 0;
+    private _distarray = _origarray apply { [_x distance player, _x] };
+    _distarray sort false;
+    private _sortedarray = [];
+    { _sortedarray pushBack (_x select 1) } forEach _distarray;
+    _sortedarray
+};
+
+// OBJECT SCALE
+tpw_core_fnc_scale = {
+    private _obj   = _this select 0;
+    private _scale = _this select 1;
+    private _pos   = getPosATL _obj;
+    _obj setObjectScale _scale;
+    sleep 0.05;
+    _obj setPosATL _pos;
+};
+
+// NEAR TREES
+tpw_core_fnc_neartrees = {
+    private _pos    = _this select 0;
+    private _radius = _this select 1;
+    _nearTrees = tpw_core_trees select { _x distance _pos < _radius };
+    _nearTrees
+};
+
+// NEAR VEGETATION
+tpw_core_fnc_nearvegetation = {
+    private _pos    = _this select 0;
+    private _radius = _this select 1;
+    _nearVeg = tpw_core_vegetation select { _x distance _pos < _radius };
+    _nearVeg
+};
+
+// SCAN WHETHER THERE IS NEARBY BATTLE (GUNFIRE/EXPLOSIONS/GRENADES)
 // tpw_core_battletime is advanced by 1-2 minutes every time these events occur
-tpw_core_fnc_battle = 
-	{
-	while {true} do
-		{
-		if (diag_ticktime > tpw_core_battletime) then	
-			{
-			tpw_core_battle = false;
-			} else
-			{
-			tpw_core_battle = true;
-			};
-		sleep 2;	
-		};
-	};
+tpw_core_fnc_battle = {
+    while { true } do {
+        if (diag_tickTime > tpw_core_battletime) then {
+            tpw_core_battle = false;
+        } else {
+            tpw_core_battle = true;
+        };
+        publicVariableServer "tpw_core_battle";
+        sleep 2;
+    };
+};
 
 // NEARBY GUNFIRE
-tpw_core_battle = false;
-tpw_core_battletime = 0;
-player addeventhandler ["firednear",{tpw_core_battletime = diag_ticktime + 60 + random 120}];	
-0 = [] spawn tpw_core_fnc_battle;	
-		
+tpw_core_battle     = false;                        publicVariableServer "tpw_core_battle";
+tpw_core_battletime = 0;                            publicVariableServer "tpw_core_battletime";
+player addEventHandler ["FiredNear", {
+    tpw_core_battletime = diag_tickTime + 60 + random 120;
+    publicVariableServer "tpw_core_battletime";
+}];
+0 = [] spawn tpw_core_fnc_battle;
+
 // CALL OR SPAWN APPROPRIATE FUNCTIONS
 tpw_core_housescanflag = 0;
-0 = [] spawn tpw_core_fnc_sunangle;	
+0 = [] spawn tpw_core_fnc_sunangle;
 [tpw_core_mapstrings] spawn tpw_core_fnc_civs;
 
-
 // NEARBY HABITABLE HOUSES
-tpw_core_fnc_houses =
-	{
-	private ["_housearray","_radius","_return"];
-	_housearray = [];
-	_radius = _this select 0;
-	_return = nearestObjects [position vehicle player,tpw_core_habitable_houses,_radius]; 
-	_return
-	};
-	
-tpw_core_fnc_screenhouses =
-	{
-	private ["_radius","_return"];
-	_radius = _this select 0;
-	_return = tpw_core_habhouses select {_x distance player < _radius};
-	_return = _return select {!(isobjecthidden _x)};
-	_return = _return select { !(["estroy",gettext (configFile >> "CfgVehicles" >> (typeof _x) >> "displayname")] call BIS_fnc_inString)}; 
-	_return = _return select { !(["amage",gettext (configFile >> "CfgVehicles" >> (typeof _x) >> "displayname")] call BIS_fnc_inString)}; 
-	_return = _return select { !(["uin",gettext (configFile >> "CfgVehicles" >> (typeof _x) >> "displayname")] call BIS_fnc_inString)}; 
-	_return = _return select { !(["bandon",gettext (configFile >> "CfgVehicles" >> (typeof _x) >> "displayname")] call BIS_fnc_inString)}; 
-	//_return = _return select { !(["stone",gettext (configFile >> "CfgVehicles" >> (typeof _x) >> "displayname")] call BIS_fnc_inString)}; 
+tpw_core_fnc_houses = {
+    private ["_housearray","_radius","_return"];
+    _housearray = [];
+    _radius     = _this select 0;
+    _return     = nearestObjects [position vehicle player, tpw_core_habitable_houses, _radius];
+    _return
+};
 
-	_return	
-	};
+tpw_core_fnc_screenhouses = {
+    private ["_radius","_return"];
+    _radius = _this select 0;
+    _return = tpw_core_habhouses select { _x distance player < _radius };
+    _return = _return select { !(isHidden _x) };
+    _return = _return select { !(["estroy", gettext (configFile >> "CfgVehicles" >> typeOf _x >> "displayName")] call BIS_fnc_inString) };
+    _return = _return select { !(["amage", gettext (configFile >> "CfgVehicles" >> typeOf _x >> "displayName")] call BIS_fnc_inString) };
+    _return = _return select { !(["uin",   gettext (configFile >> "CfgVehicles" >> typeOf _x >> "displayName")] call BIS_fnc_inString) };
+    _return = _return select { !(["bandon",gettext (configFile >> "CfgVehicles" >> typeOf _x >> "displayName")] call BIS_fnc_inString) };
+    _return
+};
 
-tpw_core_allhouses = [50000] call tpw_core_fnc_houses;
-tpw_core_habitable = [];
+tpw_core_allhouses = [50000] call tpw_core_fnc_houses;    publicVariableServer "tpw_core_allhouses";
+tpw_core_habitable  = [];
 _habitable = [];
-	{
-	_type = typeof _x;
-	if !(_type in tpw_core_habitable) then
-		{
-		_habitable pushback _type;
-		};
-	} foreach tpw_core_allhouses;
-tpw_core_habitable = _habitable;
+{
+    _type = typeOf _x;
+    if !(_type in tpw_core_habitable) then {
+        _habitable pushBack _type;
+    };
+} forEach tpw_core_allhouses;
+tpw_core_habitable = _habitable;                       publicVariableServer "tpw_core_habitable";
 
 // REPOSITION ANY UNITS THAT FALL THROUGH TERRAIN
-[] spawn 
-	{
-	while {true} do
-		{
-			{
-			_dpos = getposatl _x;
-			if (_dpos select 2 < -0.5) then 
-				{_dpos set[2,0.5];
-				_x setposatl _dpos; 
-				};
-			} foreach (allunits + alldead);
-		sleep random 10;
-		};
-	};	
+[] spawn {
+    while { true } do {
+        {
+            _dpos = getPosATL _x;
+            if (_dpos select 2 < -0.5) then {
+                _dpos set [2,0.5];
+                _x setPosATL _dpos;
+            };
+        } forEach (allUnits + allDead);
+        sleep random 10;
+    };
+};
 
 // OBJECT SCAN
 tpw_core_habhouses = [];
+tpw_core_vegetation = [];
+tpw_core_trees      = [];
 sleep 10;
 _lastpos = [0,0,0];
-while {true} do
-	{
-	if ((speed player < 20) && {player distance _lastpos > 250}) then
-		{
-		tpw_core_habhouses = tpw_core_allhouses select {_x distance player < 500};
-		tpw_core_vegetation = nearestterrainobjects[player,["tree","small tree","bush"],500,false];
-		tpw_core_trees = nearestterrainobjects[player,["tree","small tree"],500,false];		
-		_lastpos = position player; 
-		};
-	sleep 30 + (count tpw_core_habhouses)/2; 
-	};
-	
+while { true } do {
+    if ((speed player < 20) && (player distance _lastpos > 250)) then {
+        tpw_core_habhouses  = tpw_core_allhouses select { _x distance player < 500 };
+        tpw_core_vegetation = nearestTerrainObjects [player, ["tree","small tree","bush"], 500, false];
+        tpw_core_trees      = nearestTerrainObjects [player, ["tree","small tree"],        500, false];
+        _lastpos = position player;
+        publicVariableServer "tpw_core_habhouses";
+        publicVariableServer "tpw_core_vegetation";
+        publicVariableServer "tpw_core_trees";
+    };
+    sleep 30 + (count tpw_core_habhouses)/2;
+};
+
 // DUMMY LOOP SO SCRIPT DOESN'T TERMINATE
-while {true} do
-	{
-	sleep 10;
-	};	
+while { true } do {
+    sleep 10;
+};
