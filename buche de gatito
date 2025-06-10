@@ -1,0 +1,2055 @@
+#include "BIS_AddonInfo.hpp"
+class CfgPatches
+{
+	class WNZ_LightingFX
+	{
+		units[] = {};
+		weapons[] = {};
+		requiredAddons[] = { "A3_characters_F", "A3_Data_F","A3_Weapons_F_Orange"};	
+	};
+};
+
+
+
+
+
+
+class cfgLights
+{
+	class CmeasuresLight
+	{
+		color[] = {1,0.6,0.35};
+		ambient[] = {0.85,0.65,0.45};
+		brightness = 0.75;
+		diffuse[] = {1.0,1.0,1.0};
+		dayLight = 1;
+		useFlare = 1;
+		flareSize = 1;
+		flareMaxDistance = 3000;
+		position[] = {0,0,0};
+	};
+	class GrenadeExploLight
+	{
+		diffuse[] = {1,0.5,0.2};
+		color[] = {1,0.6,0.3};
+		ambient[] = {1,0.5,0.2};
+		brightness = 25;
+		size = 1;
+		intensity = 10000;
+		drawLight = 0;
+		blinking = 1;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 2.2;
+			hardLimitStart = 500;
+			hardLimitEnd = 1000;
+		};
+		position[] = {0,3.5,0};
+	};
+	class RocketLight
+	{
+		diffuse[] = {1,0.5,0.03};
+		color[] = {1,0.5,0.3};
+		ambient[] = {1,0.5,0.03};
+		brightness = "28 * fireIntensity";
+		size = 1;
+		dayLight = 1;
+		intensity = 20000;
+		drawLight = 1;
+		blinking = 0;
+		useFlare = 1;
+		flareSize = 3;
+		flareMaxDistance = 2500;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 1;
+			hardLimitStart = 50;
+			hardLimitEnd = 150;
+		};
+	};
+	class CruiseMissileLight
+	{
+		diffuse[] = {1,0.5,0.03};
+		color[] = {1,0.5,0.3};
+		ambient[] = {1,0.5,0.03};
+		brightness = "38 * fireIntensity";
+		size = 1;
+		intensity = 25000;
+		drawLight = 1;
+		blinking = 0;
+		dayLight = 1;
+		useFlare = 1;
+		flareSize = 6;
+		flareMaxDistance = 3500;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.4;
+			hardLimitStart = 150;
+			hardLimitEnd = 500;
+		};
+	};
+	class ExploLight   							//yellow and bright
+	{
+		diffuse[] = {1,0.42,0.1};
+		color[] = {1,0.5,0.2};
+		ambient[] = {1,0.4,0.05};
+		brightness = 200;
+		size = 1;
+		intensity = 100000;
+		drawLight = 1;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 4;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.2;
+			hardLimitStart = 1000;
+			hardLimitEnd = 2000;
+		};
+		position[] = {0,4.5,0};
+	};
+	class Ph_ExploLight_Big   							//yellow and bright, smaller
+	{
+		diffuse[] = {1,0.48,0.28};
+		color[] = {1,0.48,0.28};
+		ambient[] = {1,0.48,0.28};
+		brightness = 100;
+		size = 1;
+		intensity = 25000;
+		drawLight = 1;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 2;
+			constant = 0;
+			linear = 0;
+			quadratic = 2;
+			hardLimitStart = 300;
+			hardLimitEnd = 1000;
+		};
+		position[] = {0,4.5,0};
+	};
+
+	class PH_ExploLight_Med   							//yellow-orange and bright, smaller
+	{
+		diffuse[] = {1,0.38,0.24};
+		color[] = {1,0.38,0.24};
+		ambient[] = {1,0.35,0.15};
+		brightness = 100;
+		size = 1;
+		intensity = 5000;
+		drawLight = 1;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 3;
+			constant = 0;
+			linear = 0;
+			quadratic = 2;
+			hardLimitStart = =500;
+			hardLimitEnd = 1000;
+		};
+		position[] = {0,4.5,0};
+	};
+	class ExploLightMed						//reddish orange
+	{
+		diffuse[] = {1,0.42,0.1};
+		color[] = {1,0.5,0.2};
+		ambient[] = {1,0.4,0.15};
+		brightness = 200;
+		size = 1;
+		intensity = 100000;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 3;
+			constant = 0;
+			linear = 0;
+			quadratic = 5;
+			hardLimitStart = 800;
+			hardLimitEnd = 1600;
+		};
+		position[] = {0,3.5,0};
+	};
+
+	class Ph_ExploLightSmall			//orange and small
+	{
+		diffuse[] = {1,0.4,0.15};
+		color[] = {1,0.4,0.3};
+		ambient[] = {1,0.35,0.15};
+		brightness = 100;
+		size = 1;
+		intensity = 10000;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 3;
+			constant = 0;
+			linear = 0;
+			quadratic = 10;
+			hardLimitStart = 300;
+			hardLimitEnd = 1000;
+		};
+		position[] = {0,3.5,0};
+	};
+
+	class Ph_ExploLightTiny			//orange and small
+	{
+		diffuse[] = {1,0.4,0.15};
+		color[] = {1,0.5,0.35};
+		ambient[] = {1,0.38,0.25};
+		brightness = 50;
+		size = 1;
+		intensity = 250;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.4;
+			hardLimitStart = 0;
+			hardLimitEnd = 250;
+		};
+		position[] = {0,3.5,0};
+	};
+	class Ph_LightACFired			//orange and small
+	{
+		diffuse[] = {1,0.5,0.35};
+		color[] = {1,0.55,0.45};
+		ambient[] = {1,0.48,0.35};
+		brightness = 25;
+		size = 1;
+		intensity = 150;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.4;
+			hardLimitStart = 0;
+			hardLimitEnd = 250;
+		};
+		position[] = {"positionX + (directionLocalX * 1.3)","positionY + (directionLocalY * 1.3)","positionZ + (directionLocalZ * 1.3)"};
+	};
+	class Ph_LightGMGFired			//orange and small
+	{
+		diffuse[] = {1,0.25,0.05};
+		color[] = {1,0.25,0.05};
+		ambient[] = {1,0.28,0.05};
+		brightness = 25;
+		size = 1;
+		intensity = 150;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.4;
+			hardLimitStart = 0;
+			hardLimitEnd = 250;
+		};
+		position[] = {"positionX + (directionLocalX * 1.3)","positionY + (directionLocalY * 1.3)","positionZ + (directionLocalZ * 1.3)"};
+	};
+	class MineExploLight
+	{
+		diffuse[] = {1,0.5,0.35};
+		color[] = {1,0.55,0.45};
+		ambient[] = {1,0.48,0.35};
+		brightness = 20;
+		size = 1;
+		intensity = 45000;
+		drawLight = 0;
+		blinking = 1;
+		class Attenuation
+		{
+			start = 0.5;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.3;
+			hardLimitStart = 1500;
+			hardLimitEnd = 3000;
+		};
+		position[] = {0,0,0};
+	};
+
+
+	//Fires
+	class SmallFireLight
+	{
+		diffuse[] = {1,0.5,0.3};
+		color[] = {1,0.46,0.1};
+		ambient[] = {1,0.4,0.15};
+		brightness = 1000.0;
+		intensity = "7500*(power interpolate[0.1, 1.0, 0.4, 1.0])";
+		blinking = 0;
+		drawLight = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 15;
+			quadratic = 15;
+		};
+		position[] = {0,0.5,0};
+	};
+
+	class SmallFirePlaceLight
+	{
+		diffuse[] = {1,0.45,0.15};
+		color[] = {1,0.45,0.15};
+		ambient[] = {0,0,0,0};
+		brightness = 100.0;
+		intensity = "2500*(power interpolate[0.1, 1.0, 0.4, 1.0])";
+		blinking = 0;
+		drawLight = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 3;
+			linear = 0;
+			quadratic = 22;
+		};
+		position[] = {0,0.4,0};
+	};
+	class SmallFlameLight
+	{
+		diffuse[] = {1,0.45,0.2};
+		color[] = {1,0.45,0.2};
+		ambient[] = {0,0,0,0};
+		brightness = 100;
+		intensity = 5000;
+		blinking = 0;
+		drawLight = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 5;
+		};
+		position[] = {0,0,0};
+	};
+
+	//FiredLight
+	class FiredLightSmall
+	{
+		diffuse[] = {1,0.38,0.24};
+		color[] = {1,0.38,0.24};
+		ambient[] = {1,0.35,0.15};
+		brightness = 1;
+		size = 1;
+		intensity = 300;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0.1;
+			constant = 10;
+			linear = 0;
+			quadratic = 150;
+			hardLimitStart = 500;
+			hardLimitEnd = 1000;
+		};
+		position[] = {0,1.5,0};
+	};
+	class FiredLightMed
+	{
+		diffuse[] = {1,0.42,0.1};
+		color[] = {1,0.5,0.2};
+		ambient[] = {1,0.4,0.05};
+		brightness = 1;
+		size = 1;
+		intensity = 10000;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 2;
+			hardLimitStart = 300;
+			hardLimitEnd = 600;
+		};
+		position[] = {0,1.8,0};
+	};
+	class FiredLightCannon: FiredLightMed
+	{
+		diffuse[] = {1,0.38,0.24};
+		color[] = {1,0.48,0.34};
+		ambient[] = {1,0.35,0.15};
+		brightness = 1;
+		size = 1;
+		intensity = 25000;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 2;
+			hardLimitStart = 2;
+			hardLimitEnd = 100;
+		};
+		position[] = {"positionX + (directionLocalX * 1.3)","positionY + (directionLocalY * 1.3)","positionZ + (directionLocalZ * 1.3)"};
+	};
+	
+	class FiredLightLauncher			//rpg
+	{
+		diffuse[] = {1,0.42,0.1};
+		color[] = {1,0.5,0.2};
+		ambient[] = {1,0.4,0.05};
+		brightness = 1;
+		size = 1;
+		intensity = 1500;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 2;
+			hardLimitStart = 300;
+			hardLimitEnd = 600;
+		};
+		position[] = {0,0,0};
+	};
+	class FiredLightLauncherSmall		//nlaw
+	{
+		diffuse[] = {1,0.38,0.24};
+		color[] = {1,0.38,0.24};
+		ambient[] = {1,0.35,0.15};
+		brightness = 1;
+		size = 1;
+		intensity = 550;
+		drawLight = 0;
+		blinking = 0;
+		dayLight = 1;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 2;
+			hardLimitStart = 300;
+			hardLimitEnd = 600;
+		};
+		position[] = {0,0,0};
+	};
+
+
+	class ClusterLight
+	{
+		diffuse[] = {1,0.45,0.25};
+		color[] = {1,0.45,0.3};
+		ambient[] = {1,0.35,0.15};
+		size = 1;
+		intensity = 5000;
+		dayLight = 1;
+		blinking = 0;
+		useFlare = 1;
+		flareSize = 10;
+		flareMaxDistance = 100;
+		class Attenuation
+		{
+			start = 4;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.4;
+			hardLimitStart = 200;
+			hardLimitEnd = 1500;
+		};
+		position[] = {0,4.5,0};
+	};
+	class ClusterFlyLight
+	{
+		diffuse[] = {1,0.7,0.5};
+		color[] = {1,0.7,0.5};
+		ambient[] = {0,0,0,0};
+		size = 1;
+		intensity = 50;
+		blinking = 0;
+		useFlare = 1;
+		flareSize = 1;
+		flareMaxDistance = 750;
+		class Attenuation
+		{
+			start = 0;
+			constant = 0;
+			linear = 0;
+			quadratic = 0.2;
+			hardLimitStart = 1;
+			hardLimitEnd = 10;
+		};
+		position[] = {0,0,0};
+	};
+	
+
+};
+
+
+
+//general fx
+class ExplosionEffects
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position[] = {0,0,0};
+		intensity = 0.005;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExp
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 5000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class ClusterExplosionEffects
+{
+	class ClusterLight
+	{
+		simulation = "light";
+		type = "ClusterLight";
+		position[] = {0,0,0};
+		intensity = 5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//Large Ordnance
+class BombExplosion
+{
+	class LightExpBig
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MK82_Explode
+{
+	class LightExpBig
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MLRS_Explode
+{
+	class LightExpBig
+	{
+		simulation = "light";
+		type = "ExploLight";
+		position[] = {0,1.5,0};
+		intensity = 0.025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class HeavyBombExplosion
+{
+	class LightExpBig
+	{
+		simulation = "light";
+		type = "ExploLight";
+		position[] = {0,1.5,0};
+		intensity = 1.5;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,1.5,0};
+		intensity = 0.1;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+};
+
+class HERocketExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,1.5,0};
+		intensity = 0.001;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class HERoundExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.001;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 7500;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class HEShellExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.001;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class RocketExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,0,0};
+		intensity = 250;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//Artillery
+class 155mm_Explode
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLight";
+		position[] = {0,1.5,0};
+		intensity = 0.001;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class ArtyShellExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLight";
+		position[] = {0,1.5,0};
+		intensity = 0.001;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class 80mm_Explode
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 2500;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MortarExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 2500;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//Mines + Demo
+class Demo_Charge_Explode 			//democharge
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightSmall";
+		position[] = {0,0,0};
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MineExplosion		//APERS
+{	
+	class LightExp
+	{
+		simulation = "light";
+		type = "Ph_ExploLightSmall";
+		position[] = {0,1.5,0};
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class BoundingMineExplosion			//Bounding
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,1.5,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class DirectionalMineExplosionBig		 //SLAM
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,1.5,0};
+		intensity = 0.005;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class DirectionalMineExplosion		//claymore
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "Ph_ExploLightSmall";
+		position[] = {0,1.5,0};
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExp2
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position = "explosionPos";
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MineNondirectionalExplosion     //satchel
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,0,0};
+		intensity = 0.025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MineNondirectionalExplosionSmall
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightSmall";
+		position[] = {0,0,0};
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class ATMineExplosion				//AT mine
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,1.5,0};
+		intensity = 0.025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//IEDs
+class IEDMineBigExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,0,0};
+		intensity = 1;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.05;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class IEDMineSmallExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,0,0};
+		intensity = 1;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExp
+	{
+		simulation = "light";
+		type = "Ph_ExploLightSmall";
+		position[] = {0,1.5,0};
+		intensity = 0.025;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//UW Mines
+class MineUnderwaterABExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "MineExploLight";
+		position[] = {0,1.5,0};
+		intensity = 0.5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MineUnderwaterExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "MineExploLight";
+		position[] = {0,0,0};
+		intensity = 0.5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MineUnderwaterPDMExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "MineExploLight";
+		position[] = {0,0,0};
+		intensity = 0.5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//Vehicle Explosions
+class VehicleExplosionEffectsBig
+{
+	class LightExpBig
+	{
+		simulation = "light";
+		type = "Ph_ExploLight_Big";
+		position[] = {0,1.5,0};
+		intensity = 0.01;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 50000;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+};
+
+class VehicleExplosionEffects
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,1.5,0};
+		intensity = 500;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+};
+
+class HelicopterExplosionEffects
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "Ph_ExploLight_Big";
+		position[] = {0,1.5,0};
+		intensity = 0.01;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+};
+
+class HelicopterExplosionEffects2
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "Ph_ExploLight_Big";
+		position[] = {0,1.5,0};
+		intensity = 0.01;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+};
+
+
+//Missiles + rockets
+class AAMissileExplosion				//also for small diameter bombs
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 25;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExpaa
+	{
+		simulation = "light";
+		type = "Ph_ExploLight_Big";
+		position[] = {0,1.5,0};
+		intensity = 0.01;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 5000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class AAExplode
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 25;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class LightExpaa
+	{
+		simulation = "light";
+		type = "Ph_ExploLight_Big";
+		position[] = {0,1.5,0};
+		intensity = 0.01;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 5000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class Hellfire_Explode
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "PH_ExploLight_Med";
+		position[] = {0,1.5,0};
+		intensity = 0.25;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class ATMissileExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "Ph_ExploLightSmall";
+		position[] = {0,1.5,0};
+		intensity = 0.25;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class ATRocketExplosion
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 3;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class MissileExplosion
+{
+	class LightExpBig
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.025;
+		interval = 1;
+		lifeTime = 0.5;
+	};
+};
+
+class M136_Explode
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 0.006;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+//Ammo
+class ExploAmmoExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position[] = {0,0,0};
+		intensity = 0.005;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class ExploAmmoExplosionPlaneCAS
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position[] = {0,0,0};
+		intensity = 0.005;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class BasicAmmoExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position = "";
+		intensity = 0.0025;
+		interval = 1;
+		lifeTime = 0.2;
+	};
+};
+
+
+class 25mm_Explode
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position[] = {0,0,0};
+		intensity = 0.005;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+class 30mmExplode
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position[] = {0,0,0};
+		intensity = 0.005;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+class 40mm_HE_Explode
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 0.5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+class 120mm_HE
+{
+	class LightExp
+	{
+		simulation = "light";
+		type = "ExploLightMed";
+		position[] = {0,1.5,0};
+		intensity = 0.001;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 10000;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+
+class GrenadeExplosion
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "GrenadeExploLight";
+		position[] = {0,0,0};
+		intensity = 0.5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+
+//firingeffects
+class MortarFired
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_ExploLightTiny";
+		position[] = {0,0,0};
+		intensity = 5;
+		interval = 1;
+		lifeTime = 0.25;
+	};
+};
+
+
+class MachineGun2;
+class AutoCannonFired: MachineGun2
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_LightACFired";
+		position[] = {0,0,0};
+		intensity = 0.15;
+		interval = 1;
+		lifeTime = 0.08;
+	};
+};
+class GrenadeLauncherCloud
+{
+	class Light1
+	{
+		simulation = "light";
+		type = "Ph_LightGMGFired";
+		position[] = {0,0,0};
+		intensity = 0.000015;
+		interval = 1;
+		lifeTime = 0.2;
+	};
+};
+
+
+class cfgAmmo
+{
+	class Default;
+	class B_762x51_Ball;
+	class B_127x99_Ball;
+	class Sh_105mm_APFSDS;
+	class Sh_105mm_HEAT_MP;
+	class B_19mm_HE;
+	class BulletBase;
+	class ShellBase;
+	class Sh_155mm_AMOS: ShellBase
+	{
+		hit = 340;
+		indirectHit = 125;
+		indirectHitRange = 30;
+		warheadName = "HE";
+		dangerRadiusHit = 750;
+		suppressionRadiusHit = 75;
+		typicalSpeed = 800;
+		caliber = 10;
+		deflecting = 0;
+		explosive = 0.8;
+		cost = 300;
+		model = "\A3\weapons_f\ammo\shell";
+		CraterEffects = "ArtyShellCrater";
+		ExplosionEffects = "ArtyShellExplosion";
+		whistleDist = 60;
+		artilleryLock = 1;
+		thrust = 0;
+		timeToLive = 180;
+		airFriction = 0;
+		sideairFriction = 0.0;
+		soundHit1[] = {"A3\Sounds_F\arsenal\explosives\shells\Artillery_tank_shell_155mm_explosion_01",2.5118864,1,1900};
+		soundHit2[] = {"A3\Sounds_F\arsenal\explosives\shells\Artillery_tank_shell_155mm_explosion_02",2.5118864,1,1900};
+		soundHit3[] = {"A3\Sounds_F\arsenal\explosives\shells\Artillery_tank_shell_155mm_explosion_03",2.5118864,1,1900};
+		soundHit4[] = {"A3\Sounds_F\arsenal\explosives\shells\Artillery_tank_shell_155mm_explosion_04",2.5118864,1,1900};
+		multiSoundHit[] = {"soundHit1",0.25,"soundHit2",0.25,"soundHit3",0.25,"soundHit4",0.25};
+		class CamShakeExplode
+		{
+			power = 31;
+			duration = 2.4;
+			frequency = 20;
+			distance = 339.599;
+		};
+		class CamShakeHit
+		{
+			power = 155;
+			duration = 0.8;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 3.52844;
+			duration = 2.4;
+			frequency = 20;
+			distance = 99.5992;
+		};
+		class CamShakePlayerFire
+		{
+			power = 0.01;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+	};
+	class Sh_82mm_AMOS: Sh_155mm_AMOS
+	{
+		hit = 165;
+		indirectHit = 52;
+		indirectHitRange = 18;
+		cost = 200;
+		muzzleEffect = "";
+		ExplosionEffects = "MortarExplosion";
+		class CamShakeExplode
+		{
+			power = 19.4;
+			duration = 1.8;
+			frequency = 20;
+			distance = 216.443;
+		};
+		class CamShakeHit
+		{
+			power = 82;
+			duration = 0.6;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 3.00922;
+			duration = 1.8;
+			frequency = 20;
+			distance = 72.4431;
+		};
+		class CamShakePlayerFire
+		{
+			power = 0.01;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+	};
+
+
+	class B_762x51_Minigun_Tracer_Red : B_762x51_Ball
+	{
+		hit = 11.6;
+		indirectHit = 0;
+		indirectHitRange = 0;
+		cartridge = "FxCartridge_762";
+		visibleFire = 3;
+		audibleFire = 45;
+		dangerRadiusBulletClose = 8;
+		dangerRadiusHit = 12;
+		suppressionRadiusBulletClose = 6;
+		suppressionRadiusHit = 8;
+		cost = 1.2;
+		airLock = 1;
+		typicalSpeed = 800;
+		caliber = 1.6;
+		model = "\A3\Weapons_f\Data\bullettracer\tracer_red";
+		simulation="shotBullet";
+		tracerScale = 0.6;
+		tracerStartTime = 0.0075;
+		tracerEndTime = 10;
+		airFriction = -0.001;
+		class CamShakeExplode
+		{
+			power = 2.82843;
+			duration = 0.6;
+			frequency = 20;
+			distance = 8.48528;
+		};
+		class CamShakeHit
+		{
+			power = 5;
+			duration = 0.2;
+			frequency = 20;
+			distance = 1;
+		};
+	};
+	class B_762x51_Minigun_Tracer_Red_splash: B_762x51_Ball
+	{
+		hit = 11.6;
+		indirectHit = 1.2;
+		indirectHitRange = 2;
+		model = "\A3\Weapons_f\Data\bullettracer\tracer_red";
+		caliber = 3.6;
+		deflecting = 25;
+		fuseDistance = 12;
+		soundSetSonicCrack[] = {"BulletSonicCrack_Gatling_SoundSet"};
+		tracerEndTime = 10;
+	};
+	class B_20mm: BulletBase
+	{
+		hit = 60;
+		indirectHit = 6;
+		indirectHitRange = 1.6;
+		weaponType = "cannon";
+		warheadName = "HE";
+		explosive = 0.4;
+		caliber = 3.4;
+		cost = 30;
+		model = "\A3\Weapons_f\Data\bullettracer\tracer_white";
+		simulation="shotBullet";
+		tracerScale = 1;
+		tracerStartTime = 0.05;
+		tracerEndTime = 30;
+		nvgOnly = 0;
+		typicalSpeed = 1030;
+		visibleFire = 32;
+		audibleFire = 200;
+		visibleFireTime = 4;
+		dangerRadiusBulletClose = 16;
+		dangerRadiusHit = 40;
+		suppressionRadiusBulletClose = 10;
+		suppressionRadiusHit = 14;
+		aiAmmoUsageFlags = "64 + 128";
+		soundHit1[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_01",1.7782794,1,1300};
+		soundHit2[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_02",1.7782794,1,1300};
+		soundHit3[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_03",1.7782794,1,1300};
+		soundHit4[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_04",1.7782794,1,1300};
+		multiSoundHit[] = {"soundHit1",0.25,"soundHit2",0.25,"soundHit3",0.25,"soundHit4",0.25};
+		explosionSoundEffect = "DefaultExplosion";
+		airLock = 1;
+		CraterEffects = "ExploAmmoCrater";
+		explosionEffects = "ExploAmmoExplosion";
+		airFriction = -0.00078;
+		muzzleEffect = "";
+		class CamShakeExplode
+		{
+			power = 4;
+			duration = 0.8;
+			frequency = 20;
+			distance = 43.7771;
+		};
+		class CamShakeHit
+		{
+			power = 20;
+			duration = 0.4;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 2.11474;
+			duration = 0.8;
+			frequency = 20;
+			distance = 35.7771;
+		};
+		class CamShakePlayerFire
+		{
+			power = 0.01;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+	};
+	class B_20mm_Tracer_Red : B_20mm
+	{
+		hit = 60;
+		indirectHit = 6;
+		indirectHitRange = 1.6;
+		weaponType = "cannon";
+		warheadName = "HE";
+		explosive = 0.4;
+		caliber = 3.4;
+		cost = 30;
+		model = "\A3\Weapons_f\Data\bullettracer\tracer_red";
+		simulation="shotBullet";
+		tracerScale = 1;
+		tracerStartTime = 0.05;
+		tracerEndTime = 30;
+		nvgOnly = 0;
+		typicalSpeed = 1030;
+		visibleFire = 32;
+		audibleFire = 200;
+		visibleFireTime = 4;
+		dangerRadiusBulletClose = 16;
+		dangerRadiusHit = 40;
+		suppressionRadiusBulletClose = 10;
+		suppressionRadiusHit = 14;
+		aiAmmoUsageFlags = "64 + 128";
+		soundHit1[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_01",1.7782794,1,1300};
+		soundHit2[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_02",1.7782794,1,1300};
+		soundHit3[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_03",1.7782794,1,1300};
+		soundHit4[] = {"A3\Sounds_F\arsenal\explosives\grenades\Explosion_mini_grenade_04",1.7782794,1,1300};
+		multiSoundHit[] = {"soundHit1",0.25,"soundHit2",0.25,"soundHit3",0.25,"soundHit4",0.25};
+		explosionSoundEffect = "DefaultExplosion";
+		airLock = 1;
+		CraterEffects = "ExploAmmoCrater";
+		explosionEffects = "ExploAmmoExplosion";
+		airFriction = -0.00078;
+		muzzleEffect = "";
+		class CamShakeExplode
+		{
+			power = 4;
+			duration = 0.8;
+			frequency = 20;
+			distance = 43.7771;
+		};
+		class CamShakeHit
+		{
+			power = 20;
+			duration = 0.4;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 2.11474;
+			duration = 0.8;
+			frequency = 20;
+			distance = 35.7771;
+		};
+		class CamShakePlayerFire
+		{
+			power = 0.01;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+	};
+	class B_30mm_HE: B_19mm_HE
+	{
+		weaponType = "cannon";
+		hit = 30;
+		indirectHit = 8;
+		indirectHitRange = 3;
+		explosive = 0.8;
+		visibleFire = 32;
+		audibleFire = 200;
+		visibleFireTime = 3;
+		dangerRadiusBulletClose = 20;
+		dangerRadiusHit = 60;
+		suppressionRadiusBulletClose = 12;
+		suppressionRadiusHit = 24;
+		cost = 20;
+		airFriction = -0.00036;
+		fuseDistance = 3;
+		typicalSpeed = 960;
+		caliber = 1.4;
+		airlock = 1;
+		aiAmmoUsageFlags = "64 + 128";
+		tracerScale = 2.5;
+		tracerStartTime = 0.1;
+		tracerEndTime = 30;
+		simulation = "shotBullet";
+		soundHit1[] = {"A3\Sounds_F\arsenal\explosives\shells\30mm40mm_shell_explosion_01",1.7782794,1,1600};
+		soundHit2[] = {"A3\Sounds_F\arsenal\explosives\shells\30mm40mm_shell_explosion_02",1.7782794,1,1600};
+		soundHit3[] = {"A3\Sounds_F\arsenal\explosives\shells\30mm40mm_shell_explosion_03",1.7782794,1,1600};
+		soundHit4[] = {"A3\Sounds_F\arsenal\explosives\shells\30mm40mm_shell_explosion_04",1.7782794,1,1600};
+		multiSoundHit[] = {"soundHit1",0.25,"soundHit2",0.25,"soundHit3",0.25,"soundHit4",0.25};
+		class CamShakeExplode
+		{
+			power = 6;
+			duration = 1;
+			frequency = 20;
+			distance = 67.8178;
+		};
+		class CamShakeHit
+		{
+			power = 30;
+			duration = 0.4;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 2.23607;
+			duration = 1;
+			frequency = 20;
+			distance = 40;
+		};
+		class CamShakePlayerFire
+		{
+			power = 0.01;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+	};
+	class B_30mm_HE_Tracer_Red: B_30mm_HE
+	{
+		model = "\A3\Weapons_f\Data\bullettracer\tracer_red";
+	};
+	class B_127x99_Ball_Tracer_Red: B_127x99_Ball
+	{
+		tracerEndTime = 30;
+	};
+	class Sh_105mm_APFSDS_T_Red: Sh_105mm_APFSDS
+	{
+		tracerEndTime = 30;
+	};
+	class Sh_105mm_HEAT_MP_T_Red: Sh_105mm_HEAT_MP
+	{
+		tracerEndTime = 30;
+	};
+	class SubmunitionBase;
+	class R_230mm_HE: SubmunitionBase
+	{
+		artilleryLock = 1;
+		submunitionAmmo = "R_230mm_fly";
+		triggerDistance = 150;
+		cost = 1000;
+		airFriction = 0;
+		muzzleEffect = "";
+		effectFly = "Missile0";
+		model = "\A3\Weapons_F\Ammo\Rocket_230mm_F";
+		hit = 300;
+		class CamShakeExplode
+		{
+			power = 46;
+			duration = 3;
+			frequency = 20;
+			distance = 361.326;
+		};
+		class CamShakeHit
+		{
+			power = 230;
+			duration = 0.8;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 3.89432;
+			duration = 3;
+			frequency = 20;
+			distance = 121.326;
+		};
+		class CamShakePlayerFire
+		{
+			power = 5;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+		soundFly[] = {"A3\Sounds_F\weapons\Rockets\rocket_fly_1",0.56234133,1.9,500};
+	};
+	class R_230mm_Cluster: R_230mm_HE
+	{
+		triggerDistance = 250;
+		triggerSpeedCoef[] = {0.5,1};
+		submunitionConeAngle = 19;
+		submunitionConeType[] = {"randomcenter",50};
+		submunitionAmmo[] = {"Mo_cluster_AP",0.93,"Mo_cluster_AP_UXO_deploy",0.07};
+	};
+	class R_230mm_LG: R_230mm_HE
+	{
+		submunitionAmmo = "M_Mo_230mm_AT_LG";
+		muzzleEffect = "";
+		triggerDistance = 300;
+	};
+	class R_230mm_fly: ShellBase
+	{
+		artilleryLock = 1;
+		model = "\A3\Weapons_F\Ammo\Rocket_230mm_Fly_F";
+		hit = 1200;
+		indirectHit = 800;
+		indirectHitRange = 30;
+		warheadName = "HE";
+		cost = 1000;
+		audibleFire = 64;
+		dangerRadiusHit = 1250;
+		suppressionRadiusHit = 120;
+		deflecting = 0;
+		airFriction = 0;
+		muzzleEffect = "";
+		effectFly = "ArtilleryTrails";
+		ExplosionEffects = "MLRS_Explode";
+		class CamShakeExplode
+		{
+			power = 46;
+			duration = 3;
+			frequency = 20;
+			distance = 361.326;
+		};
+		class CamShakeHit
+		{
+			power = 230;
+			duration = 0.8;
+			frequency = 20;
+			distance = 1;
+		};
+		class CamShakeFire
+		{
+			power = 3.89432;
+			duration = 3;
+			frequency = 20;
+			distance = 121.326;
+		};
+		class CamShakePlayerFire
+		{
+			power = 5;
+			duration = 0.1;
+			frequency = 20;
+			distance = 1;
+		};
+		soundHit1[] = {"A3\Sounds_F\arsenal\weapons\Launchers\Titan\Explosion_titan_missile_01",2.5118864,1,1900};
+		soundHit2[] = {"A3\Sounds_F\arsenal\weapons\Launchers\Titan\Explosion_titan_missile_02",2.5118864,1,1900};
+		soundHit3[] = {"A3\Sounds_F\arsenal\weapons\Launchers\Titan\Explosion_titan_missile_03",2.5118864,1,1900};
+		multiSoundHit[] = {"soundHit1",0.34,"soundHit2",0.33,"soundHit3",0.33};
+	};
+};
+
+class CfgWeapons
+{
+	class MGun;
+	class GMG_F: MGun
+	{
+		reloadTime = 0.171429;
+		dispersion = 0.005;
+		magazineReloadTime = 10;
+		autoReload = 1;
+		aiRateOfFire = 4;
+		aiRateOfFireDistance = 500;
+		minRange = 8;
+		minRangeProbab = 0.6;
+		midRange = 500;
+		midRangeProbab = 0.7;
+		maxRange = 1500;
+		maxRangeProbab = 0.1;
+		canLock = 0;
+		ballisticsComputer = "2 + 16";
+		FCSMaxLeadSpeed = 0;
+		FCSZeroingDelay = 1;
+		maxZeroing = 1500;
+		autoFire = 1;
+		cursor = "EmptyCursor";
+		cursorAim = "gl";
+	};
+	class GMG_20mm: GMG_F
+	{
+		scope = 1;
+		displayName = "$STR_A3_GMG_20mm0";
+		magazines[] = {"200Rnd_20mm_G_belt","40Rnd_20mm_g_belt"};
+		reloadMagazineSound[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\reload_static_GMG",0.8912509,1,20};
+		class GunClouds{};
+		class GunParticles
+		{
+			class effect1
+			{
+				positionName = "usti hlavne3";
+				directionName = "konec hlavne3";
+				effectName = "GrenadeLauncherCloud";
+			};
+		};
+		maxZeroing = 2000;
+		modes[] = {"manual","close","short","medium","far"};
+		class manual: GMG_F
+		{
+			displayName = "$STR_A3_GMG_20mm0";
+			sounds[] = {"StandardSound"};
+			class StandardSound
+			{
+				begin1[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\GMG_01",1.1220185,1.0,1200};
+				begin2[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\GMG_02",1.1220185,1.0,1200};
+				begin3[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\GMG_03",1.1220185,1.0,1200};
+				soundBegin[] = {"begin1",0.33,"begin2",0.33,"begin3",0.34};
+			};
+			soundContinuous = 0;
+			soundBurst = 0;
+			reloadTime = 0.24;
+			dispersion = 0.0038;
+			aiRateOfFire = 1;
+			aiRateOfFireDistance = 10;
+			minRange = 0;
+			minRangeProbab = 0.01;
+			midRange = 1;
+			midRangeProbab = 0.01;
+			maxRange = 2;
+			maxRangeProbab = 0.01;
+		};
+		class close: manual
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 6;
+			aiRateOfFire = 1;
+			aiRateOfFireDispersion = 2;
+			aiRateOfFireDistance = 50;
+			minRange = 16;
+			minRangeProbab = 0.1;
+			midRange = 200;
+			midRangeProbab = 0.5;
+			maxRange = 400;
+			maxRangeProbab = 0.2;
+		};
+		class short: close
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 5;
+			aiRateOfFire = 1;
+			aiRateOfFireDispersion = 2;
+			aiRateOfFireDistance = 200;
+			minRange = 200;
+			minRangeProbab = 0.5;
+			midRange = 400;
+			midRangeProbab = 0.7;
+			maxRange = 800;
+			maxRangeProbab = 0.7;
+		};
+		class medium: close
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 5;
+			aiRateOfFire = 2;
+			aiRateOfFireDispersion = 2;
+			aiRateOfFireDistance = 700;
+			minRange = 700;
+			minRangeProbab = 0.7;
+			midRange = 1000;
+			midRangeProbab = 0.8;
+			maxRange = 1500;
+			maxRangeProbab = 0.75;
+		};
+		class far: close
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 3;
+			aiRateOfFire = 4;
+			aiRateOfFireDispersion = 4;
+			aiRateOfFireDistance = 1000;
+			minRange = 1000;
+			minRangeProbab = 0.8;
+			midRange = 1500;
+			midRangeProbab = 0.75;
+			maxRange = 2000;
+			maxRangeProbab = 0.1;
+		};
+	};
+	class GMG_40mm: GMG_F
+	{
+		scope = 1;
+		displayName = "$STR_A3_GMG_40mm0";
+		magazines[] = {"200Rnd_40mm_G_belt","96Rnd_40mm_G_belt","64Rnd_40mm_G_belt","32Rnd_40mm_G_belt"};
+		magazineReloadTime = 20;
+		showAimCursorInternal = 0;
+		modes[] = {"manual","close","short","medium","far"};
+		class manual: GMG_F
+		{
+			displayName = "$STR_A3_GMG_40mm0";
+			sounds[] = {"StandardSound"};
+			class StandardSound
+			{
+				begin1[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\GMG_01",1.1220185,1.0,1200};
+				begin2[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\GMG_02",1.1220185,1.0,1200};
+				begin3[] = {"A3\Sounds_F\arsenal\weapons_static\Static_GMG\GMG_03",1.1220185,1.0,1200};
+				soundBegin[] = {"begin1",0.33,"begin2",0.33,"begin3",0.34};
+			};
+			soundContinuous = 0;
+			soundBurst = 0;
+			dispersion = 0.005;
+			aiRateOfFire = 1;
+			aiRateOfFireDistance = 10;
+			minRange = 0;
+			minRangeProbab = 0.01;
+			midRange = 1;
+			midRangeProbab = 0.01;
+			maxRange = 2;
+			maxRangeProbab = 0.01;
+		};
+		class close: manual
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 6;
+			aiRateOfFire = 1;
+			aiRateOfFireDispersion = 2;
+			aiRateOfFireDistance = 50;
+			minRange = 16;
+			minRangeProbab = 0.1;
+			midRange = 100;
+			midRangeProbab = 0.5;
+			maxRange = 200;
+			maxRangeProbab = 0.2;
+		};
+		class short: close
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 5;
+			aiRateOfFire = 1;
+			aiRateOfFireDispersion = 2;
+			aiRateOfFireDistance = 150;
+			minRange = 100;
+			minRangeProbab = 0.5;
+			midRange = 250;
+			midRangeProbab = 0.7;
+			maxRange = 500;
+			maxRangeProbab = 0.75;
+		};
+		class medium: close
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 5;
+			aiRateOfFire = 2;
+			aiRateOfFireDispersion = 2;
+			aiRateOfFireDistance = 400;
+			minRange = 400;
+			minRangeProbab = 0.75;
+			midRange = 800;
+			midRangeProbab = 0.8;
+			maxRange = 1200;
+			maxRangeProbab = 0.75;
+		};
+		class far: close
+		{
+			aiBurstTerminable = 1;
+			showToPlayer = 0;
+			burst = 1;
+			burstRangeMax = 3;
+			aiRateOfFire = 4;
+			aiRateOfFireDispersion = 4;
+			aiRateOfFireDistance = 1000;
+			minRange = 1000;
+			minRangeProbab = 0.77;
+			midRange = 1200;
+			midRangeProbab = 0.75;
+			maxRange = 1500;
+			maxRangeProbab = 0.1;
+		};
+		class GunParticles
+		{
+			class effect1
+			{
+				positionName = "usti hlavne";
+				directionName = "konec hlavne";
+				effectName = "GrenadeLauncherCloud";
+			};
+		};
+	};
+};
