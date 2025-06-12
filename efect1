@@ -1,0 +1,951 @@
+/*
+    🌟 Script: Efectos
+    👨‍💻 Autor: Vianna & Enkeli
+    📅 Creación: 2025-05-18
+    🎨 Descripción: Sistema efectos para Arma 3
+*/
+
+// ======================================================
+// MODIFICADORES GLOBALES DE PARTÍCULAS
+// ======================================================
+
+// Valores multiplicadores para mejorar los efectos
+#define PARTICLE_SIZE_MULT 1.2      // Multiplicador de tamaño de partículas
+#define PARTICLE_LIFE_MULT 2.15     // Multiplicador de vida de partículas
+#define PARTICLE_COUNT_MULT 2.25    // Multiplicador de cantidad de partículas
+#define PARTICLE_DETAIL_LEVEL 1.0   // Multiplicador de detalle general
+#define SPARKLE_COUNT_MULT 5        // Multiplicador de cantidad
+#define SPARKLE_SIZE_MULT 1.4       // Multiplicador de tamaño
+#define SPARKLE_LIFE_MULT 2.5       // Multiplicador de vida
+#define SPARKLE_BRIGHTNESS 1.9      // Brillo de las chispas
+#define SMOKE_LIFE_MULT 20          // Multiplicador de duración del humo (era 1.0)
+#define SMOKE_DENSITY_MULT 1.8      // Multiplicador de densidad del humo
+#define SMOKE_SIZE_MULT 1.5         // Multiplicador de tamaño del humo
+#define SMOKE_WIND_RESISTANCE 0.01  // Factor de resistencia al viento (menor = menos afectado)
+#define MISSILE_TRAIL_LIFE 1.5
+#define MISSILE_TRAIL_SIZE 1.2
+#define MISSILE_SPARK_CHANCE 0.3
+#define MISSILE_TYPES ["R_PG32V_F", "M_NLAW_AT_F", "R_80mm_HE", "M_Titan_AT", "R_PG7_F", "M_RPG32_F", "M_Scalpel_AT", "R_TBG32V_F", "M_NLAW_AT_F", "M_SPG9_HE", "M_Vorona_HEAT", "R_MRAAWS_HE_F", "R_MRAAWS_HEAT_F"]
+
+
+// Configuración para todos los humos blancos en la misión
+{
+    if (_x isKindOf "SmokeShellWhite") then {
+        // Modificar tamaño de las partículas (mejorado)
+        _x setParticleParams [
+            ["\A3\data_f\ParticleEffects\Universal\smokeshell_white", 16, 12, 10],
+            "", "Billboard", 1, 14, [0, 0, 0], 1, 1.5, "", "", [1.0, 10.0, 40],
+            [0.8, 0.95, 0.8], 1, 1, 0.12, [0.25, 0.6, 0.15], 0.6, 1, 0.25, "", "", "", 0
+        ];
+    };
+} forEach allMissionObjects "SmokeShellWhite";
+private _gameVersion = productVersion select 2;
+private _isNewEngine = _gameVersion >= 2.0;
+
+// ======================================================
+// EFECTOS DE buchedegatito WAVE / ONDA DE CHOQUE
+// ======================================================
+
+// buchedegatito Wave básico
+blastWave = {
+    params [["_particlePos", [0,0,0], [[]]]]; 
+    
+    private _strength = 1.2; // Aumentado de 1.0
+    
+    private _particleSource = createSimpleObject ["Land_HelipadEmpty_F", AGLtoASL _particlePos, true];
+    
+    drop [
+        ["\A3\data_f\ParticleEffects\Universal\Refract", 1, 0, 1, 0],
+        "", "Billboard", 1, 0.4 * _strength,
+        [0,0,0],
+        [0,0,0],
+        0, 10, 7.9000001, 0.1, [2.4,2.4,29,72,126,180,252], // Tamaños incrementados
+        [
+            [0.15,0.15,0.15,1],
+            [0.3,0.3,0.3,1],
+            [0.6,0.6,0.6,1],
+            [0,0,0,1],
+            [0,0,0,0.6],
+            [0,0,0,0.4]
+        ],
+        [1],
+        0.25, 0.25,
+        "", "",
+        _particleSource,
+        1, false,
+        -1, [],
+        [0,1,0]
+    ];
+    
+    deleteVehicle _particleSource;
+    true;
+};
+
+// buchedegatito Wave configurable con tamaño
+blastWaveConfigurable = {
+    params [["_particlePos", [0,0,0], [[]]], ["_size", "medium", [""]]];
+    
+    private _strength = 1.2; // Aumentado de 1.0
+    
+    private _particleSource = createSimpleObject ["Land_HelipadEmpty_F", AGLtoASL _particlePos, true];
+    
+    private _dropParams = switch (_size) do {
+        case "huge": {
+            [
+                0.6 * _strength,
+                [3.6,7.2,14.4,28.8,57.6,76.8,115.2] // Aumentados 20%
+            ]
+        };
+        case "medium": {
+            [
+                0.36 * _strength,
+                [1.2,1.2,7.2,14.4,28.8,38.4,57.6] // Aumentados 20%
+            ]
+        };
+        case "small": {
+            [
+                0.15 * _strength,
+                [1.2,2.4,6.0,9.6,14.4,20.4] // Aumentados 20%
+            ]
+        };
+        case "tiny": {
+            [
+                0.12 * _strength,
+                [0.6,1.2,3.0,4.8,7.2,10.2] // Aumentados 20%
+            ]
+        };
+        case "large": {
+            [
+                0.48 * _strength,
+                [2.4,2.4,28.8,72,126,180,252] // Aumentados 20%
+            ]
+        };
+        default {
+            [0.24 * _strength, [1.2,1.2,7.2,14.4,28.8,38.4,57.6]]
+        };
+    };
+    
+    private _lifeTime = _dropParams select 0;
+    private _sizeArray = _dropParams select 1;
+    
+    // Crear efecto
+    drop [
+        ["\A3\data_f\ParticleEffects\Universal\Refract", 1, 0, 1, 0],
+        "", "Billboard", 1, _lifeTime,
+        [0,0,0],
+        [0,0,0],
+        0, 10, 7.9, 0.1,
+        _sizeArray,
+        [
+            [0.15,0.15,0.15,1],
+            [0.3,0.3,0.3,1],
+            [0.6,0.6,0.6,1],
+            [0,0,0,1],
+            [0,0,0,0.6],
+            [0,0,0,0.4]
+        ],
+        [1],
+        0.25, 0.25,
+        "", "",
+        _particleSource,
+        1, false,
+        -1, [],
+        [0,1,0]
+    ];
+    
+    deleteVehicle _particleSource;
+    true;
+};
+
+// ======================================================
+// EFECTOS DE EXPLOSIÓN COMPLETA
+// ======================================================
+
+// Versión básica de la explosión
+explosionBasic = {
+    params ["_pos"];
+    
+    // --- CLOUDLETS (Partículas) ---
+// Chispas 1 - Más numerosas y brillantes
+private _spark1 = "#particlesource" createVehicleLocal _pos;
+_spark1 setParticleParams [
+    ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,2,32,0],"","Billboard",
+    0.003, 8.0 * SPARKLE_LIFE_MULT, [0,0,0], [0,15,0], 0,28,9,0,
+    [0.12 * SPARKLE_SIZE_MULT, 0.06 * SPARKLE_SIZE_MULT],    // Tamaños más variados
+    [[1,1,1,1 * SPARKLE_BRIGHTNESS], [1,0.7,0.5,0.8 * SPARKLE_BRIGHTNESS], [1,0.5,0.3,0]], // Colores más atractivos
+    [1000],0,0,"","",_spark1
+];
+_spark1 setDropInterval 0.005; // Más frecuente
+
+// Chispas 2 - Más brillantes y duraderas
+private _spark2 = "#particlesource" createVehicleLocal _pos;
+_spark2 setParticleParams [
+    ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,48,0],"","Billboard",
+    0.001, 1.5 * SPARKLE_LIFE_MULT, [0,0,0], [0,14,0], 0,0.18,0.12,0.2,
+    [0.28 * SPARKLE_SIZE_MULT, 0.15 * SPARKLE_SIZE_MULT],
+    [[1,0.9,0.6,1 * SPARKLE_BRIGHTNESS], [1,0.8,0.5,0.8 * SPARKLE_BRIGHTNESS], [1,0.7,0.3,0]],
+    [-2],1,0,"","",_spark2
+];
+_spark2 setDropInterval 0.0005; // Mucho más frecuente
+
+// Chispas adicionales - Tipo estrellas brillantes
+private _sparkStars = "#particlesource" createVehicleLocal _pos;
+_sparkStars setParticleParams [
+    ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,12,8,0],"","Billboard",
+    0.005, 2.5 * SPARKLE_LIFE_MULT, [0,0,0], 
+    [random [-12,0,12], random [-12,0,12], random [3,6,9]], // Dirección más aleatoria
+    1, 0.1, 0.075, 0.1,
+    [0.1 * SPARKLE_SIZE_MULT, 0.15 * SPARKLE_SIZE_MULT, 0.05 * SPARKLE_SIZE_MULT], // Tamaño variable
+    [
+        [1,0.9,0.5,1 * SPARKLE_BRIGHTNESS], // Amarillo brillante  
+        [1,0.6,0.3,0.8 * SPARKLE_BRIGHTNESS], // Naranja
+        [1,0.3,0.2,0.4 * SPARKLE_BRIGHTNESS], // Rojo oscuro
+        [0.5,0.1,0.1,0]  // Desvanecimiento
+    ],
+    [0.3,0.4,0.5,0.4,0.3,0.1], 1, 0, "", "", _sparkStars
+];
+_sparkStars setDropInterval 0.01;
+
+
+// Función adicional específica para chispas intensas
+[_pos, 1.8] call createIntenseSparkles; = {
+    params ["_pos", ["_count", 25]];
+    
+    private _particleSource = "Land_HelipadEmpty_F" createVehicleLocal _pos;
+    _particleSource setPosATL _pos;
+    
+    for "_i" from 1 to (_count * SPARKLE_COUNT_MULT) do {
+        private _velX = random [-15,0,15];
+        private _velY = random [-15,0,15];
+        private _velZ = random [1,7,15];
+        private _size = random [0.08, 0.15, 0.25] * SPARKLE_SIZE_MULT;
+        private _lifeTime = random [1.5, 2.5, 3.5] * SPARKLE_LIFE_MULT;
+        
+        // Variedad de colores para chispas
+        private _sparkColor = selectRandom [
+            [[1.0,0.9,0.5,1],[1.0,0.7,0.3,0.6],[1.0,0.3,0.2,0]], // Amarillo-naranja
+            [[0.9,0.9,1.0,1],[0.7,0.7,1.0,0.6],[0.3,0.3,0.6,0]], // Azul claro
+            [[1.0,0.5,0.1,1],[1.0,0.3,0.0,0.6],[0.6,0.1,0.0,0]]  // Naranja intenso
+        ];
+        
+        // Tamaño variable durante la vida (crecer y luego encoger)
+        private _sizeCoef = random [0.8, 1.0, 1.2];
+        
+        drop [
+            ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d", 16, 12, 8, 0],
+            "", "Billboard", 1, _lifeTime,
+            [0,0,0], [_velX, _velY, _velZ], 
+            random 3, 0.06, 0.04, 0.05,
+            [_size * 0.5, _size * _sizeCoef, _size * 0.2],
+            _sparkColor,
+            [0.08], 1, 0, "", "", _particleSource
+        ];
+    };
+    
+    // Añadir un destello eléctrico visible
+    drop [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d", 16, 2, 0, 0],
+        "", "Billboard", 1, 0.3,
+        [0,0,0], [0,0,0], 0, 0, 0, 0,
+        [0.6 * SPARKLE_SIZE_MULT],
+        [[1,1,1,1],[1,1,1,0]],
+        [0.08], 1, 0, "", "", _particleSource
+    ];
+    
+    _particleSource spawn { sleep 5; deleteVehicle _this; };
+    true
+};
+    
+// Humo oscuro principal - Crece mientras se eleva, menos denso
+private _blackSmoke = "#particlesource" createVehicleLocal _pos;
+_blackSmoke setParticleParams [
+    ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,32,0],"","Billboard",
+    0.07, 20.0 * SMOKE_LIFE_MULT, // Duración aumentada
+    [0,0,0], 
+    [0,0,2.5] vectorMultiply SMOKE_WIND_RESISTANCE, // Elevación lenta
+    0, 0.04, 0.04, 0.05, // Menor turbulencia para mejor forma
+    [
+        6 * SMOKE_SIZE_MULT,         // Tamaño inicial
+        18 * SMOKE_SIZE_MULT,        // Tamaño medio
+        32 * SMOKE_SIZE_MULT,        // Tamaño grande
+        48 * SMOKE_SIZE_MULT,        // Tamaño muy grande
+        64 * SMOKE_SIZE_MULT         // Tamaño máximo (doble que antes)
+    ], 
+    [
+        [0.1,0.1,0.1, 0.6],          // Negro inicial más opaco
+        [0.15,0.15,0.15, 0.5],       // Primera transición 
+        [0.2,0.2,0.2, 0.4],          // Segunda transición
+        [0.25,0.25,0.25, 0.3],       // Tercera transición
+        [0.3,0.3,0.3, 0.2],          // Cuarta transición
+        [0.35,0.35,0.35, 0.1],       // Quinta transición
+        [0.4,0.4,0.4, 0]             // Final (transparente)
+    ], 
+    [0.1, 0.2, 0.3, 0.2, 0.1], 0.1, 0.1, "", "", _blackSmoke
+];
+_blackSmoke setDropInterval 0.05; // Menos partículas para mejor rendimientoe
+
+// Humo oscuro 2 - Más duradero y voluminoso
+private _blackSmokeBase = "#particlesource" createVehicleLocal _pos;
+_blackSmokeBase setParticleParams [
+    ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,32,0],"","Billboard",
+    0.05, 3.5 * SMOKE_LIFE_MULT,
+    [0,0,0], 
+    [0,0,1] vectorMultiply SMOKE_WIND_RESISTANCE,
+    0, 0.04, 0.04, 0.05,
+    [
+        10 * SMOKE_SIZE_MULT,        // Base más ancha
+        20 * SMOKE_SIZE_MULT,        // Crecimiento medio
+        30 * SMOKE_SIZE_MULT         // Tamaño final
+    ],
+    [
+        [0.05,0.05,0.05, 0.7],       // Casi negro, bastante opaco
+        [0.1,0.1,0.1, 0.5],          // Transición
+        [0.15,0.15,0.15, 0.3],       // Transición
+        [0.2,0.2,0.2, 0]             // Desvanecimiento
+    ], 
+    [0.1], 0.1, 0.1, "", "", _blackSmokeBase
+];
+_blackSmokeBase setDropInterval 0.08; // Menos frecuente para mejor rendimiento
+
+// Humo duradero 1 - Aumentar drásticamente duración y estabilidad
+private _smokL1 = "#particlesource" createVehicleLocal _pos;
+_smokL1 setParticleParams [
+    ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,48,0],"","Billboard",
+    0.3, 30 * SMOKE_LIFE_MULT, // Super duradero
+    [0,0,0], 
+    [0,2.5,0] vectorMultiply (SMOKE_WIND_RESISTANCE * 0.7), // Muy estable, casi no afectado
+    0, 0.06, 0.05, 0.03,
+    [3.6 * SMOKE_SIZE_MULT, 8.4 * SMOKE_SIZE_MULT, 12 * SMOKE_SIZE_MULT],
+    [
+        [0.1,0.1,0.1, 0.7 * SMOKE_DENSITY_MULT],
+        [0.2,0.2,0.2, 0.5 * SMOKE_DENSITY_MULT],
+        [0.3,0.3,0.3, 0.4 * SMOKE_DENSITY_MULT],
+        [0.4,0.4,0.4, 0.3 * SMOKE_DENSITY_MULT],
+        [0.5,0.5,0.5, 0.2 * SMOKE_DENSITY_MULT],
+        [0.6,0.6,0.6, 0.1 * SMOKE_DENSITY_MULT],
+        [0.7,0.7,0.7, 0]
+    ],
+    [0.6, 0.3, 0.1], 0.5, 0, "", "", _smokL1
+];
+_smokL1 setDropInterval 0.02; // Más frecuente
+
+// Función adicional para columna de humo persistente
+createPersistentSmoke = {
+    params ["_pos", ["_duration", 120]];
+    
+    private _particleSource = "Land_HelipadEmpty_F" createVehicleLocal _pos;
+    _particleSource setPosATL _pos;
+    
+    // Columna principal de humo
+    private _smoke = "#particlesource" createVehicleLocal _pos;
+    _smoke attachTo [_particleSource, [0,0,0]];
+    _smoke setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d", 16, 7, 48, 1],
+        "", "Billboard", 1, 
+        15 * SMOKE_LIFE_MULT, // Tiempo de vida extremadamente largo
+        [0, 0, 0],
+        [0, 0, 1.5] vectorMultiply (SMOKE_WIND_RESISTANCE * 0.5), // Muy poco afectado por viento
+        0, 0.05, 0.04, 0.02,
+        [1 * SMOKE_SIZE_MULT, 3 * SMOKE_SIZE_MULT, 5 * SMOKE_SIZE_MULT, 7 * SMOKE_SIZE_MULT],
+        [
+            [0.1, 0.1, 0.1, 0.8 * SMOKE_DENSITY_MULT],
+            [0.2, 0.2, 0.2, 0.6 * SMOKE_DENSITY_MULT],
+            [0.3, 0.3, 0.3, 0.4 * SMOKE_DENSITY_MULT],
+            [0.4, 0.4, 0.4, 0.3 * SMOKE_DENSITY_MULT],
+            [0.5, 0.5, 0.5, 0.2 * SMOKE_DENSITY_MULT],
+            [0.6, 0.6, 0.6, 0]
+        ],
+        [0.1, 0.2, 0.3], 0.5, 0.2, "", "", _particleSource
+    ];
+    _smoke setDropInterval 0.1;
+    
+    // Humo más ancho en la base
+    private _smokeBase = "#particlesource" createVehicleLocal _pos;
+    _smokeBase attachTo [_particleSource, [0,0,0]];
+    _smokeBase setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d", 16, 7, 48, 1],
+        "", "Billboard", 1,
+        20 * SMOKE_LIFE_MULT,
+        [0, 0, 0],
+        [0, 0, 0.5] vectorMultiply (SMOKE_WIND_RESISTANCE * 0.3),
+        0, 0.05, 0.04, 0.02,
+        [3 * SMOKE_SIZE_MULT, 5 * SMOKE_SIZE_MULT, 7 * SMOKE_SIZE_MULT],
+        [
+            [0.1, 0.1, 0.1, 0.7 * SMOKE_DENSITY_MULT],
+            [0.2, 0.2, 0.2, 0.5 * SMOKE_DENSITY_MULT],
+            [0.3, 0.3, 0.3, 0.3 * SMOKE_DENSITY_MULT],
+            [0.4, 0.4, 0.4, 0]
+        ],
+        [0.1], 0.5, 0.2, "", "", _particleSource
+    ];
+    _smokeBase setDropInterval 0.2;
+    
+    // Destruir después del tiempo especificado
+    [_particleSource, _smoke, _smokeBase, _duration] spawn {
+        params ["_source", "_smoke1", "_smoke2", "_time"];
+        sleep _time;
+        deleteVehicle _smoke1;
+        deleteVehicle _smoke2;
+        sleep 5;
+        deleteVehicle _source;
+    };
+    
+    // Retornar el objeto fuente para referencia
+    _particleSource
+};
+    
+    // Humo duradero 2
+    private _smokL2 = "#particlesource" createVehicleLocal _pos;
+    _smokL2 setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,48,0],"","Billboard",
+        0.008,185,[0,0,0],[0,12,0],0,12.1,9.5,1.2,[7.2,18],[[0.1,0.1,0.1,0.7],[0.2,0.2,0.2,0.5],[0.3,0.3,0.3,0.4],[0.4,0.4,0.4,0.3],[0.6,0.6,0.6,0]],[0.011],1,0,"","",_smokL2
+    ];
+    _smokL2 setDropInterval 0.06;
+    
+    // Humo duradero 3
+    private _smokL3 = "#particlesource" createVehicleLocal _pos;
+    _smokL3 setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,48,0],"","Billboard",
+        0.008,185,[0,0,0],[0,6,0],0,12.1,9.5,1.2,[7.2,18],[[0.1,0.1,0.1,0.7],[0.2,0.2,0.2,0.5],[0.3,0.3,0.3,0.4],[0.4,0.4,0.4,0.3],[0.6,0.6,0.6,0]],[0.011],1,0,"","",_smokL3
+    ];
+    _smokL3 setDropInterval 0.05;
+    
+    // Bola de fuego 1
+    private _ball1 = "#particlesource" createVehicleLocal _pos;
+    _ball1 setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,2,32,0],"","Billboard",
+        0.01,4.2,[0,0,0],[0,12,0],12.1,12.1,9.5,1.2,[0,2.4,4.8,4.8,4.8,4.8,4.8],[[1,1,1,-1],[1,1,1,0]],[0.011],1,0,"","",_ball1
+    ];
+    _ball1 setDropInterval 0.08;
+    
+    // Bola de fuego 2
+    private _ball2 = "#particlesource" createVehicleLocal _pos;
+    _ball2 setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,2,32,0],"","Billboard",
+        0.025,4.2,[0,0,0],[0,12,0],12.1,12.1,9.5,1.2,[1.56,1.56,1.56],[[1,1,1,1],[1,1,1,0]],[0.06],1,0,"","",_ball2
+    ];
+    _ball2 setDropInterval 0.09;
+    
+    // Bola de fuego 3
+    private _ball3 = "#particlesource" createVehicleLocal _pos;
+    _ball3 setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,2,32,0],"","Billboard",
+        0.005,4.2,[0,0,0],[0,18,0],12.1,12.1,9.5,1.2,[1.2,4.8,0],[[1,1,0.2,-2],[1,1,1,0]],[1.8],1,0,"","",_ball3
+    ];
+    _ball3 setDropInterval 0.04;
+    
+    // --- LUCES ---
+    // Luz principal
+    private _light1 = "#lightpoint" createVehicleLocal _pos;
+    _light1 setLightBrightness 0.84;
+    _light1 setLightAmbient [0.36,0.36,0.36];
+    _light1 setLightColor [0.84,0.84,0.84];
+    _light1 setLightFlareSize 84;
+    _light1 setLightFlareMaxDistance 3600;
+    _light1 setLightUseFlare false;
+    
+    // Luz secundaria (tono cálido)
+    private _light2 = "#lightpoint" createVehicleLocal _pos;
+    _light2 setLightBrightness 0.54;
+    _light2 setLightAmbient [0.12,0.048,0.018];
+    _light2 setLightColor [1,0.54,0.18];
+    _light2 setLightFlareSize 36;
+    _light2 setLightFlareMaxDistance 3600;
+    _light2 setLightUseFlare false;
+    
+    // Limpiar entidades después de tiempo
+    [_spark1, _spark2, _smok1, _smok2, _explPar, _smokL1, _smokL2, _smokL3, _ball1, _ball2, _ball3, _light1, _light2] spawn {
+        params ["_sp1", "_sp2", "_sm1", "_sm2", "_exp", "_sl1", "_sl2", "_sl3", "_b1", "_b2", "_b3", "_l1", "_l2"];
+        sleep 0.3; 
+        { deleteVehicle _x } forEach [_sp1, _sp2, _sm1, _sm2, _exp];
+        sleep 0.5;
+        { deleteVehicle _x } forEach [_l1, _l2];
+        sleep 2.0;
+        { deleteVehicle _x } forEach [_sl1, _sl2, _sl3, _b1, _b2, _b3];
+    };
+    
+    // Retornar éxito
+    true
+};
+
+// ======================================================
+// EFECTOS DE VAPOR PARA AERONAVES
+// ======================================================
+
+vapourEffect = {
+    params ["_v"];
+    
+    if (typeName _v != "OBJECT" || {isNull _v}) exitWith {false};
+    
+    sleep (0.1 + random 0.2);
+    
+    private _trail1 = objNull;
+    private _trail2 = objNull;
+    private _fusv1 = objNull;
+    private _fusv2 = objNull;
+    
+    // Crear partículas en puntas de ala si existen puntos de memoria
+    if (([0,0,0] distance (_v selectionPosition "cerveny pozicni")) != 0) then {
+        _trail1 = "#particlesource" createVehicleLocal (_v modelToWorld [0,0,0]);
+        _trail1 attachTo [_v, [0,0,0], "cerveny pozicni"];
+        _trail1 setParticleRandom [0.25, [0.08,0.08,0.08], [0,0,0], 0, 0, [0,0,0,0], 0, 0];
+        
+        _trail2 = "#particlesource" createVehicleLocal (_v modelToWorld [0,0,0]);
+        _trail2 attachTo [_v, [0,0,0], "zeleny pozicni"];
+        _trail2 setParticleRandom [0.25, [0.08,0.08,0.08], [0,0,0], 0, 0, [0,0,0,0], 0, 0];
+    };
+    if (isNull _trail1) exitWith {false};
+    
+    // Recoger parámetros de segmento y validar puntos de memoria
+    private _posLS = _v selectionPosition "body_vapour_L_S";
+    private _posLE = _v selectionPosition "body_vapour_L_E";
+    private _posRS = _v selectionPosition "body_vapour_R_S";
+    private _posRE = _v selectionPosition "body_vapour_R_E";
+    
+    if (_posLS isEqualTo [0,0,0] || _posLE isEqualTo [0,0,0] || _posRS isEqualTo [0,0,0] || _posRE isEqualTo [0,0,0]) exitWith {false};
+    
+    // Preparar emisores del fuselaje
+    _fusv1 = "#particlesource" createVehicleLocal (_v modelToWorld _posLS);
+    _fusv2 = "#particlesource" createVehicleLocal (_v modelToWorld _posRS);
+    
+    _fusv1 attachTo [_v, [0,0,0], "body_vapour_L_S"];
+    _fusv2 attachTo [_v, [0,0,0], "body_vapour_R_S"];
+    
+    private _lgap = _posLS distance _posLE;
+    private _rgap = _posRS distance _posRE;
+    
+    if (_lgap <= 0 || _rgap <= 0) exitWith {false};
+    
+    private _lemmiters = [_fusv1];
+    private _remmiters = [_fusv2];
+    
+    // Crear emisores intermedios (más densos)
+    private _i = 0;
+    private _step = 0.8;
+    private _xd = (_posLE select 0) - (_posLS select 0);
+    private _yd = (_posLE select 1) - (_posLS select 1);
+    private _zd = (_posLE select 2) - (_posLS select 2);
+    while {_i < _lgap} do {
+        private _pe = "#particlesource" createVehicleLocal (_v modelToWorld [0,0,0]);
+        _pe setParticleRandom [0.25, [0.08,0.08,0.08], [0,0,0], 0, 0.25, [0,0,0,0], 0, 0];
+        _pe attachTo [_v, [_posLS select 0 + _i * (_xd/_lgap), _posLS select 1 + _i * (_yd/_lgap), _posLS select 2 + _i * (_zd/_lgap)]];
+        _lemmiters pushBack _pe;
+        _i = _i + _step;
+    };
+    
+    _i = 0;
+    _xd = (_posRE select 0) - (_posRS select 0);
+    _yd = (_posRE select 1) - (_posRS select 1);
+    _zd = (_posRE select 2) - (_posRS select 2);
+    while {_i < _rgap} do {
+        private _pe = "#particlesource" createVehicleLocal (_v modelToWorld [0,0,0]);
+        _pe setParticleRandom [0.25, [0.08,0.08,0.08], [0,0,0], 0, 0.25, [0,0,0,0], 0, 0];
+        _pe attachTo [_v, [_posRS select 0 + _i * (_xd/_rgap), _posRS select 1 + _i * (_yd/_rgap), _posRS select 2 + _i * (_zd/_rgap)]];
+        _remmiters pushBack _pe;
+        _i = _i + _step;
+    };
+    
+    // Bucle principal de actualización
+    [_v, _trail1, _trail2, _lemmiters, _remmiters] spawn {
+        params ["_v", "_t1", "_t2", "_lems", "_rems"];
+        
+        while {alive _v} do {
+            private _vel = velocity _v;
+            private _speed = sqrt ((_vel select 0)^2 + (_vel select 1)^2 + (_vel select 2)^2);
+            
+            if (_speed > 45) then {
+                sleep 0.05;
+                
+                private _pitchvel = abs ((velocity _v select 2) atan2 (_vel select 0 + _vel select 1));
+                private _vdir = vectorDir _v;
+                private _pitch = abs ((_vdir select 2) atan2 ((_vdir select 0) + (_vdir select 1)));
+                private _dirvel = abs ((velocity _v select 0) atan2 (velocity _v select 1));
+                private _dir = getDir _v;
+                if (_dir > 180) then {_dir = 360 - _dir};
+                
+                private _aoa = abs(_pitch - _pitchvel) + abs(_dir - _dirvel);
+                private _interval = 1 / (_speed * 2.8);
+                private _intensity = (_aoa * (_speed / 3500)) min 3.5;
+                
+                if (_intensity > 0.25) then {
+                    private _particleSize = [0.8, 0.5] * (0.7 + (_intensity * 0.3));
+                    private _particleLife = 0.65 * _intensity;
+                    
+                    {
+                        _x setDropInterval _interval;
+                        _x setParticleParams [
+                            ["\A3\data_f\ParticleEffects\Universal\Universal.p3d", 16, 13, 3, 0],
+                            "", "Billboard", 1, _particleLife,
+                            [0, 0, 0], velocity _v, 0, 1.2, 0.85, 0, 
+                            _particleSize, 
+                            [[1,1,1,0.1], [1,1,1,0.12], [1,1,1,0.08], [1,1,1,0]], 
+                            [1000], 0, 0, "", "", _v
+                        ];
+                    } forEach (_t1 + _t2);
+                    
+                    {
+                        _x setDropInterval _interval;
+                        _x setParticleParams [
+                            ["\A3\data_f\ParticleEffects\Universal\Universal.p3d", 16, 13, 3, 0],
+                            "", "Billboard", 1, _particleLife * 0.8,
+                            [0, 0, 0], velocity _v, 0, 1.1, 0.8, 0, 
+                            _particleSize * 0.9, 
+                            [[1,1,1,0.1], [1,1,1,0.12], [1,1,1,0.08], [1,1,1,0]], 
+                            [1000], 0, 0, "", "", _v
+                        ];
+                    } forEach (_lems + _rems);
+                } else {
+                    {_x setDropInterval 0} forEach (_t1 + _t2 + _lems + _rems);
+                };
+            } else {
+                sleep 0.75;
+            };
+        };
+    };
+    
+    // Limpiar al apagar motor
+    _v addEventHandler ["Engine", {
+        params ["_veh", "_engineOn"];
+        if (!_engineOn) then {
+            {
+                if !(isNull _x) then {deleteVehicle _x};
+            } forEach (_veh getVariable ["vapourSources", []]);
+        };
+    }];
+    
+    _v setVariable ["vapourSources", [_trail1, _trail2, _fusv1, _fusv2] + _lemmiters + _remmiters];
+    true
+};
+
+// ======================================================
+// EFECTOS DE REFRACCIÓN GRANDES
+// ======================================================
+
+buchedegatitoRefractLarge = {
+    params ["_particlePos"];
+    
+    private _strength = 1.2;  // Aumentado de 1.0
+    
+    // Convertir posición AGL a ASL
+    private _particleASL = AGLtoASL _particlePos;
+    
+    // Crear objeto auxiliar invisible
+    private _particleSource = createSimpleObject ["Land_HelipadEmpty_F", _particleASL, true];
+    
+    // Crear efecto de onda refractiva mejorado
+    drop [
+        ["\A3\data_f\ParticleEffects\Universal\Refract", 1, 0, 1, 0],
+        "", "Billboard", 1, 0.48 * _strength,
+        [0, 0, 0], 
+        [0, 0, 0],
+        0,
+        12,
+        9.5,
+        0.12,
+        [2.4, 2.4, 28.8, 72, 126, 180, 252], // Tamaños aumentados 20%
+        [
+            [0.15, 0.15, 0.15, 1],
+            [0.3, 0.3, 0.3, 1],
+            [0.6, 0.6, 0.6, 1],
+            [0, 0, 0, 1],
+            [0, 0, 0, 0.6],
+            [0, 0, 0, 0.4]
+        ],
+        [1],
+        0.24, 0.24,
+        "", "",
+        _particleSource,
+        1, false,
+        -1, [],
+        [0, 1, 0]
+    ];
+    
+    // Eliminar objeto auxiliar
+    deleteVehicle _particleSource;
+    true
+};
+
+// ======================================================
+// EFECTOS DE IMPLOSIÓN / ANILLOS DE CONVERGENCIA
+// ======================================================
+
+bombRefractEffect = {
+    // Configuración del efecto mejorada
+    #define DIST_FROM_CENTER 14.4      // Aumentado de 12.0
+    #define DIST_VARIATION 6.0         // Aumentado de 5.0
+    #define VELOCITY_REDUCTION 1.4     // Ajustado para velocidad óptima
+    #define STARTING_HEIGHT 0.06       // Aumentado ligeramente
+    #define VELOCITY_DOWN 0            // Mantener plano
+    #define DIR_STEP_SIZE 7            // Reducido de 8 para más partículas
+    
+    private _expCenter = _this;
+    
+    // Crear objeto invisible que sirve como fuente de referencia
+    private _particleSource = "Land_HelipadEmpty_F" createVehicleLocal [0, 0, 0];
+    _particleSource enableSimulation false;
+    _particleSource setPosASL (AGLtoASL _expCenter);
+    
+    // Calcular las direcciones radiales
+    private _directions = [];
+    for "_i" from 0 to 360 step DIR_STEP_SIZE do {
+        _directions pushBack [sin _i, cos _i, 0];
+    };
+    
+    // Generar partículas mejoradas
+    {
+        private _randomX = random [-DIST_VARIATION, 0, DIST_VARIATION];
+        private _randomY = random [-DIST_VARIATION, 0, DIST_VARIATION];
+        private _currentPosition = [
+            (DIST_FROM_CENTER * (_x # 0)) + _randomX,
+            (DIST_FROM_CENTER * (_x # 1)) + _randomY,
+            STARTING_HEIGHT
+        ];
+        private _currentDirection = [
+            (_x # 0)/-VELOCITY_REDUCTION,
+            (_x # 1)/-VELOCITY_REDUCTION,
+            -VELOCITY_DOWN
+        ];
+        
+        drop [
+            ["\A3\data_f\ParticleEffects\Universal\smoke_2", 1, 0, 1, 1],
+            "", "Billboard", 1, 9.5,
+            _currentPosition,
+            _currentDirection,
+            0, 0.06, 0.05, 0.015,
+            [1.2, 6.0],
+            [
+                [0.33, 0.27, 0.22, 0.42],
+                [0.66, 0.55, 0.44, 0]
+            ],
+            [1],
+            1, 0.25,
+            "", "",
+            _particleSource,
+            0, false,
+            -1, [],
+            [0, 1, 0]
+        ];
+    } forEach _directions;
+    
+    deleteVehicle _particleSource;
+    true
+};
+
+// ======================================================
+// EFECTOS DE CALOR / DISTORSIÓN TÉRMICA
+// ======================================================
+
+heatHazeEffect = {
+    private _particlePos = _this;
+    
+    if (player distance _particlePos > 120) exitWith {false}; // Aumentado de 100
+    
+    // Fuente del efecto
+    private _particleSource = createSimpleObject ["Land_HelipadEmpty_F", AGLtoASL _particlePos, true];
+    
+    // Variación de tamaño aleatoria (aumentada)
+    private _sizeVar = random [0.6, 1.2, 1.8];
+    
+    // Temperatura - efecto más intenso
+    private _airTemp = 0.24;
+    private _weatherEffect = true;
+    
+    if (_weatherEffect) then {
+        _airTemp = (ambientTemperature # 0) / 90; // Modificado de 100 para más intensidad
+    };
+    
+    // Rango de efecto aumentado
+    _airTemp = (_airTemp max 0.18) min 0.54; // Aumentado de 0.15-0.45
+    
+    // Crear efecto de distorsión mejorado
+    drop [
+        ["\A3\data_f\ParticleEffects\Universal\Refract", 1, 0, 1, 0],
+        "", "Billboard", 0, 1.0, // Vida aumentada de 0.85
+        [0,0,0],
+        [0,0,0],
+        1, 1.5, 1.2, 0.08, // Valores ajustados
+        [_sizeVar],
+        [
+            [0.07, 0.07, 0.07, _airTemp],
+            [0.36, 0.36, 0.36, _airTemp - 0.3],
+            [0.36, 0.36, 0.36, _airTemp - 0.6],
+            [0.36, 0.36, 0.36, _airTemp - 0.9],
+            [0.36, 0.36, 0.36, _airTemp - 0.15]
+        ],
+        [1],
+        0.12, 0.025,
+        "", "",
+        _particleSource,
+        1, false,
+        -1, [],
+        [0,1,0]
+    ];
+    
+    deleteVehicle _particleSource;
+    true
+};
+
+// ======================================================
+// EFECTOS DE EXPLOSIÓN CON FRAGMENTOS FÍSICOS
+// ======================================================
+
+buchedegatitoRefractWithDebris = {
+    params ["_particlePos", "_size"];
+    
+    private _strength = 1.2; // Aumentado de 1.0
+    
+    private _particleSource = createSimpleObject ["Land_HelipadEmpty_F", AGLtoASL _particlePos, true];
+    
+    private _dropParams = switch (_size) do {
+        case "medium": {
+            [0.36 * _strength, [1.2,1.2,7.2,14.4,28.8,38.4,57.6]] // Aumentados 20%
+        };
+        case "small": {
+            [0.15 * _strength, [1.2,2.4,6.0,9.6,14.4,20.4]] // Aumentados 20%
+        };
+        case "tiny": {
+            [0.12 * _strength, [0.6,1.2,3.0,4.8,7.2,10.2]] // Aumentados 20%
+        };
+        case "large": {
+            [0.48 * _strength, [2.4,2.4,28.8,72,126,180,252]] // Aumentados 20%
+        };
+        default {
+            [0.24 * _strength, [1.2,1.2,7.2,14.4,28.8,38.4,57.6]]
+        };
+    };
+    
+    private _lifeTime = _dropParams select 0;
+    private _sizeArray = _dropParams select 1;
+    
+    // Onda de refracción principal
+    drop [
+        ["\A3\data_f\ParticleEffects\Universal\Refract", 1, 0, 1, 0],
+        "", "Billboard", 1, _lifeTime,
+        [0,0,0], [0,0,0],
+        0, 12, 9.5, 0.12,
+        _sizeArray,
+        [
+            [0.15,0.15,0.15,1],[0.3,0.3,0.3,1],
+            [0.6,0.6,0.6,1],[0,0,0,1],
+            [0,0,0,0.6],[0,0,0,0.4]
+        ],
+        [1], 0.25, 0.25,
+        "", "", _particleSource, 1, false, -1, [], [0,1,0]
+    ];
+    
+    // Efectos vanilla complementarios mejorados:
+    
+    // Fragmentos de piedra (más grandes y veloces)
+    drop [
+        ["\A3\data_f\ParticleEffects\Pstone\Data\pstone_nohq.paa", 1, 0, 1], 
+        "", "Billboard", 1.8, 1.4, 
+        [0,0,0], [random 0.5 - 0.25, random 0.5 - 0.25, random 1.5], 
+        random 3, 0.6, 0.6, 0.12, 
+        [0.24, 0.18, 0.12] * PARTICLE_SIZE_MULT, 
+        [[0.7,0.7,0.7,1],[0.4,0.4,0.4,0.6],[0,0,0,0]], 
+        [0.8], 0.3, 0.3, "", "", _particleSource
+    ];
+    
+    // Chispa brillante (más intensa)
+    drop [
+        ["#(argb,8,8,3)color(1,0.2,0.2,1)", 1, 0, 1], 
+        "", "Billboard", 0.7, 0.95, 
+        [0,0,0], [random 0.5 - 0.25, random 0.5 - 0.25, random 0.8], 
+        random 2, 1.2, 1.2, 0.24, 
+        [0.12, 0.06] * PARTICLE_SIZE_MULT, 
+        [[1,0.2,0.2,1],[1,0.1,0.1,0.6],[0,0,0,0]], 
+        [1.2], 0.24, 0.24, "", "", _particleSource
+    ];
+    
+    // Carbón incandescente (más rojo)
+    drop [
+        ["#(argb,8,8,3)color(1,0.4,0,1)", 1, 0, 1], 
+        "", "Billboard", 1.8, 3.0, 
+        [0,0,0], [random 0.3 - 0.15, random 0.3 - 0.15, 0.1 + random 0.2], 
+        random 2, 0.6, 0.6, 0.12, 
+        [0.6, 0.48, 0.36] * PARTICLE_SIZE_MULT, 
+        [[1,0.4,0,1],[0.5,0.2,0,0.7],[0,0,0,0]], 
+        [1.2], 0.36, 0.36, "", "", _particleSource
+    ];
+    
+    // Glow superficial (más brillante)
+    drop [
+        ["#(argb,8,8,3)color(1,1,1,0.8)", 1, 0, 1], 
+        "", "Billboard", 2.4, 1.4, 
+        [0,0,0], [0,0,0], 
+        0, 0.12, 0.12, 0.06, 
+        [0.48, 0.36, 0.12] * PARTICLE_SIZE_MULT, 
+        [[1,1,1,0.85],[1,1,1,0.5],[1,1,1,0]], 
+        [1.2], 0.12, 0.12, "", "", _particleSource
+    ];
+    
+    // Fragmentos de carne (más realistas)
+    drop [
+        ["#(argb,8,8,3)color(0.5,0.1,0.1,1)", 1, 0, 1], 
+        "", "Billboard", 1.2, 1.8, 
+        [0,0,0], [random 0.5 - 0.25, random 0.5 - 0.25, 0.2 + random 0.3], 
+        random 2, 0.36, 0.48, 0.06, 
+        [0.24, 0.18, 0.06] * PARTICLE_SIZE_MULT, 
+        [[0.5,0.1,0.1,1],[0.2,0.05,0.05,0.6],[0,0,0,0]], 
+        [1.0], 0.24, 0.18, "", "", _particleSource
+    ];
+    
+    // Fragmentos de vidrio (más brillantes)
+    drop [
+        ["#(argb,8,8,3)color(0.5,0.5,1,0.8)", 1, 0, 1], 
+        "", "Billboard", 1.2, 1.45, 
+        [0,0,0], [random 0.5 - 0.25, random 0.5 - 0.25, 0.1 + random 0.2], 
+        random 3, 0.48, 0.48, 0.12, 
+        [0.24, 0.12] * PARTICLE_SIZE_MULT, 
+        [[0.5,0.5,1,0.85],[0.2,0.2,0.5,0.5],[0,0,0,0]], 
+        [1.2], 0.12, 0.12, "", "", _particleSource
+    ];
+    
+    // Luz base explosiva (más intensa)
+    drop [
+        ["#(argb,8,8,3)color(1,0.5,0,1)", 1, 0, 1], 
+        "", "Billboard", 0.6, 0.96, 
+        [0,0,0], [0,0,0], 
+        0, 0.72, 0.6, 0.12, 
+        [0.24, 0.06] * PARTICLE_SIZE_MULT, 
+        [[1,0.5,0,1],[1,0.2,0,0.7],[0,0,0,0]], 
+        [1.2], 0.36, 0.36, "", "", _particleSource
+    ];
+    
+    // Fragmentos de madera (más voluminosos)
+    drop [
+        ["#(argb,8,8,3)color(0.4,0.3,0.2,1)", 1, 0, 1], 
+        "", "Billboard", 1.8, 2.4, 
+        [0,0,0], [random 0.3 - 0.15, random 0.3 - 0.15, 0.05 + random 0.1], 
+        random 2, 0.6, 0.48, 0.12, 
+        [0.3, 0.24, 0.12] * PARTICLE_SIZE_MULT, 
+        [[0.4,0.3,0.2,1],[0.2,0.15,0.1,0.7],[0,0,0,0]], 
+        [1.0], 0.24, 0.24, "", "", _particleSource
+    ];
+    
+    deleteVehicle _particleSource;
+    true
+};
+
+// ======================================================
+// EFECTOS DE EXPLOSIÓN MÚLTIPLES FASES
+// ======================================================
+
+multiphasebuchedegatitoEffect = {
+    params ["_particlePos", "_size"];
+    
+    private _strength = 1.2; // Aumentado de 1.0
+    
+    private _particleSource = createSimpleObject ["Land_HelipadEmpty_F", AGLtoASL _particlePos, true];
+    
+    private _dropParams = switch (_size) do {
+        case "tiny":   {[0.12 * _strength, [0.6,1.2,3.0,4.8,7.2,10.2]]};
+        case "small":  {[0.15 * _strength, [1.2,2.4,6.0,9.6,14.4,20.4]]};
+        case "medium": {[0.36 * _strength, [1.2,1.2,7.2,14.4,28.8,38.4,57.6]]};
+        case "large":  {[0.48 * _strength, [2.4,2.4,28.8,72,126,180,252]]};
+        default        {[0.24 * _strength, [1.2,1.2,7.2,14.4,28.8,38.4,57.6]]};
+    };
+    
+    private _lifeTime = _dropParams select 0;
+    private _sizeArray = _dropParams select 1;
+ 
