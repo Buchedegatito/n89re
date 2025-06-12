@@ -1,1 +1,606 @@
 
+// Sistema de fuego en arbustos
+createBushFiresNearExplosion = {
+    params ["_position", "_radius"];
+    
+    // Buscar arbustos y vegetación cercana
+    private _nearBushes = nearestTerrainObjects [_position, ["BUSH", "SMALL TREE", "HIDE"], _radius, false, true];
+    
+    // Filtrar para mantener solo ciertos tipos
+    _nearBushes = _nearBushes select {typeOf _x in BUSH_CLASSES || {getText (configFile >> "CfgVehicles" >> typeOf _x >> "simulation") == "bush"}};
+    
+    // Si no hay arbustos cercanos, buscar objetos que podrían ser vegetación
+    if (count _nearBushes == 0) then {
+        _nearBushes = _position nearObjects ["NonStrategic", _radius];
+        _nearBushes = _nearBushes select {typeOf _x in BUSH_CLASSES};
+    };
+    
+    // Si sigue sin haber arbustos, terminar
+    if (count _nearBushes == 0) exitWith {false};
+    
+    // Número de arbustos que se incendiarán (basado en densidad)
+    private _numBushesToBurn = floor(random [1, 3, 5]);
+    _numBushesToBurn = _numBushesToBurn min (count _nearBushes);
+    
+    // Seleccionar arbustos al azar para incendiar
+    private _selectedBushes = [];
+    for "_i" from 1 to _numBushesToBurn do {
+        if (count _nearBushes > 0) then {
+            private _idx = floor(random count _nearBushes);
+            _selectedBushes pushBack (_nearBushes select _idx);
+            _nearBushes deleteAt _idx;
+        };
+    };
+    
+    // Crear fuegos en los arbustos seleccionados
+    {
+        private _bush = _x;
+        
+        // Solo incendiar con cierta probabilidad
+        if (random 1 < BUSH_FIRE_CHANCE) then {
+            private _bushPos = getPosATL _bush;
+            
+            // Duración aleatoria del fuego
+            private _fireDuration = random [FIRE_DURATION_MIN, (FIRE_DURATION_MIN + FIRE_DURATION_MAX) / 2, FIRE_DURATION_MAX];
+            
+            // Crear el efecto de fuego
+            [_bushPos, _fireDuration] spawn {
+                params ["_pos", "_duration"];
+                
+                // Crear fuego
+                private _fire = "FirePlace_burning_F" createVehicle _pos;
+                _fire setPosATL _pos;
+                
+                // Ajustar tamaño del fuego (más pequeño que el predeterminado)
+                _fire setDamage 0.7;
+                
+                // Añadir humo
+                private _smoke = "#particlesource" createVehicleLocal _pos;
+                _smoke attachTo [_fire, [0, 0, 0.5]];
+                _smoke setParticleParams [
+                    ["\A3\data_f\ParticleEffects\Universal\Universal", 16, 7, 48, 1],
+                    "", "Billboard", 1, 15,
+                    [0, 0, 0], [0, 0, 1.5], 1, 0.05, 0.04, 0.05,
+                    [0.5, 2, 4],
+                    [[0.5, 0.5, 0.5, 0.15], [0.75, 0.75, 0.75, 0.075], [1, 1, 1, 0]],
+                    [0.125], 0.1, 0.05, "", "", _fire
+                ];
+                _smoke setParticleRandom [2, [0.25, 0.25, 0.5], [0.2, 0.2, 0.5], 0.5, 0.5, [0, 0, 0, 0.1], 0, 0, 0.1];
+                _smoke setDropInterval 0.1;
+                
+                // Esperar la duración programada
+                sleep _duration;
+                
+                // Apagar gradualmente
+                _fire setDamage 0.9;
+                sleep 3;
+                deleteVehicle _smoke;
+                sleep 2;
+                deleteVehicle _fire;
+            };
+            
+            // Pequeño retardo para evitar procesamiento simultáneo
+            sleep 0.05;
+        };
+    } forEach _selectedBushes;
+    
+    true
+};
+
+// Detector de explosiones
+if (isNil "environmentalEffectsActive") then {
+    environmentalEffectsActive = true;
+    
+    // Event handler para detectar explosiones
+    ["Explosion", {
+        params ["_explosive", "_pos", "_velocity"];
+        
+        // Obtener información del explosivo
+        private _ammoType = "";
+        private _magnitude = 1;
+        
+        if (!isNull _explosive) then {
+            _ammoType = typeOf _explosive;
+            
+            // Determinar magnitud basada en tipo de explosivo
+            switch (true) do {
+                // Granadas pequeñas
+                case (_ammoType in ["GrenadeHand", "mini_Grenade"]): {
+                    _magnitude = 0.6;
+                };
+                // RPGs y misiles pequeños
+                case (_ammoType in ["R_PG32V_F", "M_NLAW_AT_F"]): {
+                    _magnitude = 1.2;
+                };
+                // Explosivos y minas
+                case (_ammoType in ["DemoCharge_Remote_Ammo", "SatchelCharge_Remote_Ammo", "ATMine_Range_Ammo"]): {
+                    _magnitude = 1.5;
+                };
+                // Artillería y bombas aéreas
+                case (_ammoType in ["Sh_82mm_AMOS", "Sh_155mm_AMOS", "Bo_Mk82"]): {
+                    _magnitude = 2.0;
+                };
+                // Por defecto
+                default {
+                    _magnitude = 1.0;
+                };
+            };
+        };
+        
+        // Verificar magnitud mínima para efectos
+        if (_magnitude >= 0.5) then {
+            // Derribar árboles
+            [_pos, TREE_FALL_RADIUS * _magnitude, TREE_FALL_DAMAGE_MIN] spawn fallTreesNearExplosion;
+            
+            // Incendiar arbustos (solo para explosiones más grandes)
+            if (_magnitude >= 1.0) then {
+                [_pos, BUSH_FIRE_RADIUS * _magnitude] spawn createBushFiresNearExplosion;
+            };
+        };
+    }] call BIS_fnc_addScriptedEventHandler;
+    
+    systemChat "";
+};
+
+
+// Activar el sistema de estelas de misiles
+if (isNil "missileTrailSystemActive") then {
+    missileTrailSystemActive = true;
+    
+    // Event handler para detectar disparos
+    player addEventHandler ["Fired", {
+        params ["_unit", "_weapon", "_muzzle", "_mode", "_ammo", "_magazine", "_projectile", "_gunner"];
+        
+        // Verificar si es un misil o RPG
+        if (_ammo in MISSILE_TYPES || {getText (configFile >> "CfgAmmo" >> _ammo >> "simulation") == "shotMissile"}) then {
+            // Aplicar estela con breve retardo para estabilidad
+            [_projectile] spawn {
+                params ["_missile"];
+                sleep 0.05; // Breve retardo
+                [_missile] call createMissileTrail;
+            };
+        };
+    }];
+    
+    // Detección para IA (en radio cercano)
+    [] spawn {
+        while {missileTrailSystemActive} do {
+            // Buscar misiles recientes cerca
+            {
+                // Verificar si es un misil y si no tiene ya una estela
+                if ((_x isKindOf "MissileBase" || _x isKindOf "RocketBase") && 
+                    {isNil {_x getVariable "hasTrail"}} && 
+                    {vectorMagnitude velocity _x > 10}) then {
+                    
+                    _x setVariable ["hasTrail", true];
+                    [_x] call createMissileTrail;
+                };
+            } forEach (entities [["MissileBase", "RocketBase"], [], false, true]);
+            
+            sleep 0.2;
+        };
+    };
+    
+    systemChat "";
+};
+
+// === EXPLOSIÓN VISUALMENTE IMPRESIONANTE ===
+
+// Añadir esta función para crear explosiones visualmente impresionantes
+createEnhancedExplosion = {
+    params ["_pos", ["_size", "medium"], ["_createSmoke", true]];
+    
+    [_pos, 1.5] call createExplosionFlash;
+    [_pos, 1.8] call addExplosionSparks;	
+    [_pos, _size] call blastWaveConfigurable;
+    [_pos, 30] call createIntenseSparkles;
+    [_pos] call explosionBasic;
+    [_pos] spawn {
+        params ["_p"];
+        sleep 0.05;
+        [_p, "large"] call blastWaveConfigurable;
+    };
+    
+    // 4. Efecto de luz complementario
+    private _light = "#lightpoint" createVehicleLocal _pos;
+    _light setLightBrightness 30;
+    _light setLightAmbient [0.9, 0.9, 0.9];
+    _light setLightColor [1, 0.8, 0.6];
+    _light setLightDayLight true;
+    _light setLightUseFlare true;
+    _light setLightFlareSize 16;
+    _light setLightFlareMaxDistance 1000;
+    
+    [_light] spawn {
+        params ["_light"];
+        _light setLightBrightness 10;
+        sleep 0.1;
+        _light setLightBrightness 5;
+        sleep 0.1;
+        _light setLightBrightness 3;
+        sleep 0.2;
+        deleteVehicle _light;
+    };
+    
+    // 5. Humo persistente si se solicita
+    if (_createSmoke) then {
+        // Esperar un momento para que la explosión termine
+        [_pos] spawn {
+            params ["_pos"];
+            sleep 1;
+            [_pos, 120] call createPersistentSmoke;
+        };
+    };
+    
+    // 6. Fragmentos voladores adicionales (escombros)
+    for "_i" from 1 to 15 do {
+        private _vel = [random [-15,0,15], random [-15,0,15], random [3,7,12]];
+        private _size = random [0.1, 0.2, 0.3] * SPARKLE_SIZE_MULT;
+        
+        drop [
+            ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d", 16, 12, 13, 0],
+            "", "Billboard", 1, 4 * SPARKLE_LIFE_MULT,
+            [0,0,0], _vel, 
+            random 3, 0.06, 0.04, 0.05,
+            [_size, _size * 0.8],
+            [
+                [0.5, 0.5, 0.5, 1],
+                [0.5, 0.5, 0.5, 0.5], 
+                [0.5, 0.5, 0.5, 0]
+            ],
+            [0.08], 1, 0, "", "", _pos
+        ];
+    };
+    
+    true
+};
+
+// [position player, "large", true] call createEnhancedExplosion;
+
+// === EXPLOSIÓN MEJORADA COMPLETA ===
+
+// Nueva función completa que incluye todos los efectos
+createEnhancedExplosion = {
+    params ["_pos", ["_size", "medium"], ["_createSmoke", true]];
+    
+    // 1. Destello blanco inicial
+    private _light = "#lightpoint" createVehicleLocal _pos;
+    _light setLightBrightness 150;
+    _light setLightAmbient [1,1,1];
+    _light setLightColor [1,1,1];
+    _light setLightDayLight true;
+    
+    // Destello blanco primario (intenso pero muy breve)
+    private _flash = "#particlesource" createVehicleLocal _pos;
+    _flash setParticleParams [
+        ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d", 16, 2, 32, 0],
+        "", "Billboard", 1, 0.1,
+        [0,0,0], [0,0,0],
+        0, 0, 0, 0,
+        [10 * 1.5, 15 * 1.5], // Tamaño grande para cubrir área
+        [[1,1,1,1], [1,1,1,0]], // Blanco brillante a transparente
+        [1], 0, 0, "", "", _pos
+    ];
+    _flash setDropInterval 0.001;
+    
+    // 2. Chispas intensas
+    [_pos, 1.8] call createIntenseSparkles;
+    
+    // 3. Onda expansiva y refracción
+    [_pos, _size] call blastWaveConfigurable;
+    
+    // 4. Explosión básica
+    [_pos] call explosionBasic;
+    
+    // 5. Efectos ambientales
+    [_pos, TREE_FALL_RADIUS, TREE_FALL_DAMAGE_MIN] spawn fallTreesNearExplosion;
+    [_pos, BUSH_FIRE_RADIUS] spawn createBushFiresNearExplosion;
+    
+    // Limpiar el destello después de un breve período
+    [_light, _flash] spawn {
+        params ["_light", "_flash"];
+        
+        // Desvanecimiento rápido de luz
+        sleep 0.01;
+        _light setLightBrightness 100;
+        sleep 0.01;
+        _light setLightBrightness 75;
+        sleep 0.02;
+        _light setLightBrightness 50;
+        sleep 0.03;
+        _light setLightBrightness 25;
+        sleep 0.03;
+        
+        // Eliminar elementos
+        deleteVehicle _light;
+        deleteVehicle _flash;
+    };
+    
+    true
+};
+
+// Configuración
+#define MIN_UNITS_FIGHTING 10       // Número mínimo de unidades en combate
+#define CHECK_INTERVAL 30           // Intervalo entre comprobaciones (segundos)
+#define SOUND_RADIUS 300           // Radio para detectar unidades (metros)
+#define BATTLE_SOUND_VOLUME 2.5     // Volumen de los sonidos (1.0 = normal)
+#define BATTLE_MIN_DISTANCE 300     // Distancia mínima para reproducir sonidos (metros)
+#define BATTLE_MAX_DISTANCE 2500    // Distancia máxima para reproducir sonidos (metros)
+
+// Rutas a los sonidos ambientales de batalla
+#define BATTLE_AMBIENT_SOUNDS ["\A3\Sounds_F\environment\ambient\battlefield\battlefield_firefight1.wss", "\A3\Sounds_F\environment\ambient\battlefield\battlefield_firefight2.wss", "\A3\Sounds_F\environment\ambient\battlefield\battlefield_firefight3.wss", "\A3\Sounds_F\environment\ambient\battlefield\battlefield_firefight4.wss"]
+#define BATTLE_DISTANT_SOUNDS ["\A3\Sounds_F\environment\ambient\battlefield\battlefield_distant1.wss", "\A3\Sounds_F\environment\ambient\battlefield\battlefield_distant2.wss", "\A3\Sounds_F\environment\ambient\battlefield\battlefield_distant3.wss"]
+
+// Variables globales para seguimiento
+battle_ambience_active = false;
+battle_ambience_last_pos = [0,0,0];
+
+// Función para verificar si hay suficientes unidades en combate
+checkForBattleConditions = {
+    private _unitsFighting = 0;
+    private _playerPos = position player;
+    private _units = _playerPos nearEntities ["Man", SOUND_RADIUS];
+    
+    // Filtrar unidades no jugadores
+    _units = _units select {!isPlayer _x && {side _x != civilian}};
+    
+    // Contar unidades en combate
+    {
+        if (behaviour _x == "COMBAT" || {_x getVariable ["ace_medical_isBleeding", false]}) then {
+            _unitsFighting = _unitsFighting + 1;
+        };
+    } forEach _units;
+    
+    // Devolver verdadero si hay suficientes unidades luchando
+    (_unitsFighting >= MIN_UNITS_FIGHTING)
+};
+
+// Función para encontrar una posición adecuada para el sonido
+findBattleSoundPosition = {
+    private _playerPos = position player;
+    private _dir = random 360; // Dirección aleatoria
+    private _distance = random [BATTLE_MIN_DISTANCE, (BATTLE_MIN_DISTANCE + BATTLE_MAX_DISTANCE) / 2, BATTLE_MAX_DISTANCE];
+    
+    // Crear una posición en dirección y distancia aleatorias
+    private _targetPos = _playerPos getPos [_distance, _dir];
+    _targetPos set [2, 0]; // Asegurar que está a nivel del suelo
+    
+    // Tratar de encontrar una posición válida en tierra
+    private _finalPos = _targetPos;
+    if (surfaceIsWater _targetPos) then {
+        // Buscar tierra cercana
+        private _landPos = _targetPos;
+        for "_i" from 1 to 8 do {
+            _landPos = _targetPos getPos [(_i * 100), random 360];
+            if (!surfaceIsWater _landPos) exitWith {
+                _finalPos = _landPos;
+            };
+        };
+    };
+    
+    _finalPos
+};
+
+// Función para reproducir sonidos de batalla
+playBattleAmbience = {
+    // Solo si no está ya reproduciéndose
+    if (battle_ambience_active) exitWith {};
+    
+    battle_ambience_active = true;
+    
+    // Iniciar bucle de reproducción de sonidos
+    [] spawn {
+        while {[] call checkForBattleConditions} do {
+            // Encontrar una posición para el sonido
+            private _soundPos = [] call findBattleSoundPosition;
+            battle_ambience_last_pos = _soundPos;
+            
+            // Elegir un sonido aleatorio
+            private _mainSound = selectRandom BATTLE_AMBIENT_SOUNDS;
+            private _distantSound = selectRandom BATTLE_DISTANT_SOUNDS;
+            
+            // Reproducir sonido principal (combate intenso)
+            playSound3D [_mainSound, objNull, false, _soundPos, BATTLE_SOUND_VOLUME, 1, BATTLE_MAX_DISTANCE];
+            
+            // Esperar un poco y reproducir el sonido distante
+            sleep (random [8, 12, 15]);
+            
+            // Si las condiciones aún se cumplen, reproducir sonido distante
+            if ([] call checkForBattleConditions) then {
+                private _distantPos = _soundPos getPos [random [500, 800, 1200], random 360];
+                playSound3D [_distantSound, objNull, false, _distantPos, BATTLE_SOUND_VOLUME * 0.7, 1, BATTLE_MAX_DISTANCE * 1.5];
+            };
+            
+            // Esperar antes del próximo ciclo
+            sleep (random [15, 25, 35]);
+        };
+        
+        battle_ambience_active = false;
+    };
+};
+
+// Iniciar el sistema de detección
+if (isNil "battle_ambience_system_active") then {
+    battle_ambience_system_active = true;
+    
+    // Iniciar bucle principal de verificación
+    [] spawn {
+        while {battle_ambience_system_active} do {
+            // Verificar condiciones de batalla
+            if ([] call checkForBattleConditions) then {
+                [] call playBattleAmbience;
+            };
+            
+            // Esperar antes de la próxima comprobación
+            sleep CHECK_INTERVAL;
+        };
+    };
+    
+    systemChat "";
+};
+
+// Función para probar manualmente
+testBattleAmbience = {
+    params [["_force", false]];
+    
+    if (_force) then {
+        // Forzar reproducción de sonidos
+        systemChat "";
+        private _soundPos = [] call findBattleSoundPosition;
+        battle_ambience_last_pos = _soundPos;
+        private _mainSound = selectRandom BATTLE_AMBIENT_SOUNDS;
+        private _distantSound = selectRandom BATTLE_DISTANT_SOUNDS;
+        
+        playSound3D [_mainSound, objNull, false, _soundPos, BATTLE_SOUND_VOLUME, 1, BATTLE_MAX_DISTANCE];
+        
+        [_distantSound, _soundPos] spawn {
+            params ["_sound", "_pos"];
+            sleep 10;
+            private _distantPos = _pos getPos [random [500, 800, 1200], random 360];
+            playSound3D [_sound, objNull, false, _distantPos, BATTLE_SOUND_VOLUME * 0.7, 1, BATTLE_MAX_DISTANCE * 1.5];
+        };
+    } else {
+        // Mostrar información sobre el sistema
+        private _unitsFighting = 0;
+        private _playerPos = position player;
+        private _units = _playerPos nearEntities ["Man", SOUND_RADIUS];
+        
+        _units = _units select {!isPlayer _x && {side _x != civilian}};
+        
+        {
+            if (behaviour _x == "COMBAT" || {_x getVariable ["ace_medical_isBleeding", false]}) then {
+                _unitsFighting = _unitsFighting + 1;
+            };
+        } forEach _units;
+        
+        systemChat format [];
+        systemChat format [];
+        
+        if (battle_ambience_active) then {
+            systemChat format [];
+        };
+    };
+};
+
+
+// ======================================================
+// === EXPLOSIÓN COMPLETA MEJORADA ===
+// ======================================================
+
+// Actualiza la función createEnhancedExplosion
+createEnhancedExplosion = {
+    params ["_pos", ["_size", "medium"], ["_createSmoke", true]];
+    
+    [_pos, 1.5] call createExplosionFlash;
+    [_pos, 1.8] call addExplosionSparks;	
+    [_pos, _size] call blastWaveConfigurable;
+    [_pos, 30] call createIntenseSparkles;
+    [_pos] call explosionBasic;
+    [_pos] spawn {
+        params ["_p"];
+        sleep 0.05;
+        [_p, "large"] call blastWaveConfigurable;
+    };
+    
+    // 3. Chispas intensas
+    [_pos, 30] call createIntenseSparkles;
+    
+    // 4. Efecto de luz complementario
+    private _light = "#lightpoint" createVehicleLocal _pos;
+    _light setLightBrightness 10;
+    _light setLightAmbient [0.8, 0.6, 0.4];
+    _light setLightColor [1, 0.8, 0.6];
+    _light setLightDayLight true;
+    
+    [_light] spawn {
+        params ["_light"];
+        sleep 0.1;
+        _light setLightBrightness 5;
+        sleep 0.1;
+        _light setLightBrightness 3;
+        sleep 0.2;
+        deleteVehicle _light;
+    };
+    
+    // 5. Humo con crecimiento mejorado (¡NUEVO!)
+    if (_createSmoke) then {
+        // Crear humo negro directamente
+        private _blackSmoke = "#particlesource" createVehicleLocal _pos;
+        _blackSmoke setParticleParams [
+            ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,32,0],"","Billboard",
+            0.07, 6.0 * SMOKE_LIFE_MULT,
+            [0,0,0], 
+            [0,0,3.5] vectorMultiply SMOKE_WIND_RESISTANCE,
+            0, 0.04, 0.04, 0.05,
+            [
+                6 * SMOKE_SIZE_MULT,
+                18 * SMOKE_SIZE_MULT, 
+                32 * SMOKE_SIZE_MULT, 
+                48 * SMOKE_SIZE_MULT,
+                64 * SMOKE_SIZE_MULT
+            ], 
+            [
+                [0.1,0.1,0.1, 0.6],
+                [0.15,0.15,0.15, 0.5],
+                [0.2,0.2,0.2, 0.4],
+                [0.25,0.25,0.25, 0.3],
+                [0.3,0.3,0.3, 0.2],
+                [0.35,0.35,0.35, 0.1],
+                [0.4,0.4,0.4, 0]
+            ], 
+            [0.1, 0.2, 0.3, 0.2, 0.1], 0.1, 0.1, "", "", _pos
+        ];
+        _blackSmoke setDropInterval 0.05;
+        
+        // Bola de humo densa inicial
+        private _blackSmokeBase = "#particlesource" createVehicleLocal _pos;
+        _blackSmokeBase setParticleParams [
+            ["\\A3\\data_f\\ParticleEffects\\Universal\\Universal.p3d",16,7,32,0],"","Billboard",
+            0.05, 20 * SMOKE_LIFE_MULT,
+            [0,0,0], 
+            [0,0,2] vectorMultiply SMOKE_WIND_RESISTANCE,
+            0, 0.04, 0.04, 0.05,
+            [10 * SMOKE_SIZE_MULT, 20 * SMOKE_SIZE_MULT, 30 * SMOKE_SIZE_MULT],
+            [[0.05,0.05,0.05, 0.7], [0.1,0.1,0.1, 0.5], [0.15,0.15,0.15, 0.3], [0.2,0.2,0.2, 0]], 
+            [0.1], 0.1, 0.1, "", "", _pos
+        ];
+        _blackSmokeBase setDropInterval 0.08;
+        
+        // Limpiar el humo después
+        [_blackSmoke, _blackSmokeBase] spawn {
+            params ["_smoke1", "_smoke2"];
+            sleep (30 * SMOKE_LIFE_MULT);
+            deleteVehicle _smoke1;
+            deleteVehicle _smoke2;
+        };
+    };
+    
+    // 6. Fragmentos voladores y más efectos...
+    // [Resto del código se mantiene igual]
+    
+    true
+};
+
+// Ejemplo de uso:
+// [position player, "large", true] call createEnhancedExplosion;
+
+// ======================================================
+// 🔵 DURACIÓN EXTENDIDA DE EFECTOS
+// ======================================================
+
+// Aumentar duración de agujeros de bala
+bulletHoleDuration = 300; // 5 minutos en segundos
+
+// Interceptar la creación de agujeros
+[] spawn {
+    while {true} do {
+        {
+            if (toLower (typeOf _x) find "bullet" > -1 || toLower (typeOf _x) find "hole" > -1) then {
+                _x setVariable ["lifeTime", bulletHoleDuration];
+            };
+        } forEach (entities [[], [], true, true]);
+        sleep 10;
+    };
+};
+
+
