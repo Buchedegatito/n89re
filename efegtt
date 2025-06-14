@@ -1,0 +1,1159 @@
+
+// ==================== SISTEMA DE CACHEO DE PATHFINDING ====================
+// Inicializar sistema de caché de rutas
+BE_AI_InitPathCache = {
+    if (BE_AI_Debug) then {
+        systemChat "BE Advanced AI: Iniciando Sistema de Caché de Rutas";
+    };
+    
+    // Definir nuestra versión optimizada del comando doMove
+    BE_AI_OptimizedDoMove = {
+        params ["_unit", "_position"];
+        
+        if (!BE_AI_UsePathCache || !alive _unit || isPlayer _unit) exitWith {
+            _unit doMove _position;
+        };
+        
+        // Verificar distancia
+        private _unitPos = getPosATL _unit;
+        private _distance = _unitPos distance _position;
+        
+        // Para distancias cortas, usar doMove nativo
+        if (_distance < 50) exitWith {
+            _unit doMove _position;
+        };
+        
+        // Buscar en caché
+        private _key = format ["%1_%2", 
+            [floor(_unitPos select 0), floor(_unitPos select 1)], 
+            [floor(_position select 0), floor(_position select 1)]
+        ];
+        
+        private _cachedPath = BE_AI_PathCache getOrDefault [_key, []];
+        
+        // Si hay ruta en caché y no es muy antigua
+        if (count _cachedPath > 0) then {
+            _cachedPath params ["_path", "_timestamp"];
+            
+            // Verificar edad
+            if (time - _timestamp < BE_AI_PathCacheMaxAge) then {
+                // Usar ruta cacheada
+                {
+                    _unit doMove _x;
+                } forEach _path;
+                
+                // Actualizar estadísticas
+                BE_AI_Stats set ["PathCacheHits", (BE_AI_Stats getOrDefault ["PathCacheHits", 0]) + 1];
+            } else {
+                // Caché expirada, usar nativo y actualizar
+                _unit doMove _position;
+                
+                // Actualizar caché
+                private _path = [_unitPos, _position];
+                BE_AI_PathCache set [_key, [_path, time]];
+                
+                // Actualizar estadísticas
+                BE_AI_Stats set ["PathCacheMisses", (BE_AI_Stats getOrDefault ["PathCacheMisses", 0]) + 1];
+            };
+        } else {
+            // No hay caché, usar nativo y almacenar
+            _unit doMove _position;
+            
+            // Crear nueva entrada en caché
+            private _path = [_unitPos, _position];
+            BE_AI_PathCache set [_key, [_path, time]];
+            
+            // Actualizar estadísticas
+            BE_AI_Stats set ["PathCacheMisses", (BE_AI_Stats getOrDefault ["PathCacheMisses", 0]) + 1];
+        };
+    };
+    
+    // Crear una función global para que otras partes del código puedan usarla
+    missionNamespace setVariable ["BE_doMove", BE_AI_OptimizedDoMove];
+    
+    // Limpieza periódica de caché
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UsePathCache} do {
+            // Limpiar entradas antiguas
+            private _keysToRemove = [];
+            {
+                private _key = _x;
+                private _data = BE_AI_PathCache getOrDefault [_key, []];
+                
+                if (count _data > 0) then {
+                    _data params ["_path", "_timestamp"];
+                    
+                    if (time - _timestamp > BE_AI_PathCacheMaxAge) then {
+                        _keysToRemove pushBack _key;
+                    };
+                };
+            } forEach keys BE_AI_PathCache;
+            
+            // Eliminar entradas antiguas
+            {
+                BE_AI_PathCache deleteAt _x;
+            } forEach _keysToRemove;
+            
+            // Limitar tamaño de caché
+            while {count keys BE_AI_PathCache > BE_AI_PathCacheSize} do {
+                private _oldestKey = "";
+                private _oldestTime = time;
+                
+                {
+                    private _key = _x;
+                    private _data = BE_AI_PathCache getOrDefault [_key, []];
+                    
+                    if (count _data > 0) then {
+                        _data params ["_path", "_timestamp"];
+                        
+                        if (_timestamp < _oldestTime) then {
+                            _oldestTime = _timestamp;
+                            _oldestKey = _key;
+                        };
+                    };
+                } forEach keys BE_AI_PathCache;
+                
+                if (_oldestKey != "") then {
+                    BE_AI_PathCache deleteAt _oldestKey;
+                } else {
+                    break;
+                };
+            };
+            
+            sleep 60;
+        };
+    };
+};
+
+// ==================== STREAMING DE COMPORTAMIENTO ====================
+// Inicializar streaming de comportamiento
+BE_AI_InitStreamingBehavior = {
+    if (BE_AI_Debug) then {
+        systemChat "BE Advanced AI: Iniciando Streaming de Comportamiento";
+    };
+    
+    // Bucle principal de streaming
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseStreamingBehavior} do {
+            {
+                private _unit = _x;
+                
+                // Aplicar streaming solo a unidades vivas y no jugadores
+                if (alive _unit && !isPlayer _unit) then {
+                    [_unit] call BE_AI_UpdateUnitBehaviorLOD;
+                };
+                
+                // Pequeña pausa entre unidades para distribuir carga
+                sleep 0.01;
+            } forEach BE_AI_TrackedUnits;
+            
+            sleep 2;
+        };
+    };
+};
+
+// Actualizar LOD de comportamiento para una unidad
+BE_AI_UpdateUnitBehaviorLOD = {
+    params ["_unit"];
+    
+    // Determinar LOD basado en distancia
+    private _playerDist = [getPosATL _unit] call BE_AI_GetNearestPlayerDistance;
+    
+    private _lod = 0;
+    if (_playerDist > BE_AI_LOD_FarRange) then {
+        _lod = 3;
+    } else {
+        if (_playerDist > BE_AI_LOD_MediumRange) then {
+            _lod = 2;
+        } else {
+            if (_playerDist > BE_AI_LOD_CloseRange) then {
+                _lod = 1;
+            } else {
+                _lod = 0;
+            };
+        };
+    };
+    
+    // Si el LOD no ha cambiado, salir
+    private _currentLOD = BE_AI_UnitLODLevels getOrDefault [str _unit, 0];
+    if (_lod == _currentLOD) exitWith {};
+    
+    // Actualizar LOD
+    BE_AI_UnitLODLevels set [str _unit, _lod];
+    
+    // Aplicar configuración según LOD
+    switch (_lod) do {
+        case 0: {
+            // LOD 0: Comportamiento completo
+            _unit enableAI "ALL";
+            
+            // Restaurar skills
+            _unit setSkill (_unit getVariable ["BE_AI_OriginalSkill", 0.7]);
+            _unit setSkill ["aimingAccuracy", _unit getVariable ["BE_AI_OriginalAccuracy", 0.5]];
+            _unit setSkill ["spotDistance", _unit getVariable ["BE_AI_OriginalSpotDist", 0.7]];
+            _unit setSkill ["spotTime", _unit getVariable ["BE_AI_OriginalSpotTime", 0.5]];
+            
+            // Comportamiento de combate completo
+            _unit setVariable ["BE_AI_UseComplexTactics", true];
+        };
+        case 1: {
+            // LOD 1: Comportamiento medio
+            _unit enableAI "TARGET";
+            _unit enableAI "AUTOTARGET";
+            _unit enableAI "MOVE";
+            _unit enableAI "ANIM";
+            _unit enableAI "PATH";
+            
+            // Reducir skills
+            _unit setSkill ["aimingAccuracy", (_unit getVariable ["BE_AI_OriginalAccuracy", 0.5]) * 0.8];
+            _unit setSkill ["spotDistance", (_unit getVariable ["BE_AI_OriginalSpotDist", 0.7]) * 0.7];
+            _unit setSkill ["spotTime", (_unit getVariable ["BE_AI_OriginalSpotTime", 0.5]) * 0.7];
+            
+            // Tácticas simplificadas
+            _unit setVariable ["BE_AI_UseComplexTactics", false];
+        };
+        case 2: {
+            // LOD 2: Comportamiento básico
+            _unit enableAI "MOVE";
+            _unit enableAI "ANIM";
+            _unit disableAI "FSM";
+            _unit disableAI "TARGET";
+            _unit disableAI "AUTOTARGET";
+            
+            // Skills mínimas
+            _unit setSkill ["aimingAccuracy", (_unit getVariable ["BE_AI_OriginalAccuracy", 0.5]) * 0.5];
+            _unit setSkill ["spotDistance", (_unit getVariable ["BE_AI_OriginalSpotDist", 0.7]) * 0.5];
+            _unit setSkill ["spotTime", (_unit getVariable ["BE_AI_OriginalSpotTime", 0.5]) * 0.5];
+            
+            // Sin tácticas avanzadas
+            _unit setVariable ["BE_AI_UseComplexTactics", false];
+        };
+        case 3: {
+            // LOD 3: Comportamiento mínimo
+            _unit disableAI "FSM";
+            _unit disableAI "TARGET";
+            _unit disableAI "AUTOTARGET";
+            _unit disableAI "MOVE";
+            _unit enableAI "ANIM";
+            
+            // Skills mínimas
+            _unit setSkill ["aimingAccuracy", 0.1];
+            _unit setSkill ["spotDistance", 0.1];
+            _unit setSkill ["spotTime", 0.1];
+            
+            // Candidato para shadow
+            if (BE_AI_UseShadowAI && _playerDist > BE_AI_ShadowMinDistance) then {
+                if (!(_unit getVariable ["BE_AI_IsShadow", false])) then {
+                    [_unit] call BE_AI_ConvertToShadow;
+                };
+            };
+        };
+    };
+};
+
+// ==================== SISTEMA DE PROPAGACIÓN DE ALERTAS DE COMBATE ====================
+// Inicializar sistema de alertas
+BE_AI_InitAlertSystem = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema de Alertas de Combate"};
+    
+    // Bucle principal de detección de combate
+    [] spawn {
+        while {BE_AI_SystemActive} do {
+            call BE_AI_DetectCombatEvents;
+            sleep BE_AI_AlertProcessInterval;
+        };
+    };
+    
+    // Bucle de procesamiento de alertas
+    [] spawn {
+        while {BE_AI_SystemActive} do {
+            call BE_AI_ProcessCombatAlerts;
+            sleep 1;
+        };
+    };
+};
+
+// Detectar eventos de combate
+BE_AI_DetectCombatEvents = {
+    // Detectar disparos y explosiones
+    {
+        private _unit = _x;
+        
+        // Solo procesar unidades en combate activo
+        if (alive _unit && behaviour _unit == "COMBAT" && _unit getVariable ["BE_AI_Level", ""] == "FULL") then {
+            private _pos = getPosATL _unit;
+            private _side = side _unit;
+            
+            // Verificar si hay enemigos conocidos
+            private _enemy = _unit findNearestEnemy _unit;
+            private _enemyPos = if (!isNull _enemy) then {getPosATL _enemy} else {_pos};
+            
+            // Crear evento de alerta en la posición entre la unidad y su enemigo
+            private _alertPos = [
+                (_pos select 0) + ((_enemyPos select 0) - (_pos select 0)) * 0.5,
+                (_pos select 1) + ((_enemyPos select 1) - (_pos select 1)) * 0.5,
+                (_pos select 2) + ((_enemyPos select 2) - (_pos select 2)) * 0.5
+            ];
+            
+            // Registrar alerta
+            BE_AI_CombatAlerts pushBack [_alertPos, _side, time, "COMBAT"];
+            
+            // Limitar cantidad de alertas para evitar spam
+            if (count BE_AI_CombatAlerts > 20) then {BE_AI_CombatAlerts deleteAt 0};
+        };
+    } forEach BE_AI_TrackedUnits;
+};
+
+// Procesar alertas de combate para notificar unidades lejanas
+BE_AI_ProcessCombatAlerts = {
+    private _currentTime = time;
+    private _alertsToProcess = BE_AI_CombatAlerts select {_currentTime - (_x select 2) < BE_AI_AlertResponseTime};
+    
+    // Si no hay alertas recientes, salir
+    if (count _alertsToProcess == 0) exitWith {};
+    
+    // Procesar cada unidad para ver si debe responder
+    {
+        private _unit = _x;
+        
+        // Solo procesar unidades vivas que no estén ya en combate
+        if (alive _unit && behaviour _unit != "COMBAT") then {
+            private _unitPos = getPosATL _unit;
+            private _unitSide = side _unit;
+            
+            // Verificar alertas relevantes para esta unidad
+            {
+                _x params ["_alertPos", "_alertSide", "_alertTime", "_alertType"];
+                
+                // Comprobar si la alerta es para el mismo bando y está dentro del rango
+                if (_unitSide == _alertSide && _unitPos distance _alertPos < BE_AI_AlertPropagationDistance) then {
+                    // Calcular tiempo de reacción basado en distancia y rango
+                    private _reactionDelay = (_unitPos distance _alertPos) / 100;
+                    
+                    // Si la unidad es una shadow o proxy, reactivarla
+                    if (_unit getVariable ["BE_AI_IsShadow", false]) then {
+                        // Encontrar la entrada shadow
+                        {
+                            _x params ["_dummy", "_shadowData", "_shadowUnit"];
+                            if (_shadowUnit == _unit) exitWith {[_x] call BE_AI_ConvertFromShadow};
+                        } forEach BE_AI_ShadowUnits;
+                    };
+                    
+                    // Mejorar temporalmente la IA
+                    private _currentLevel = _unit getVariable ["BE_AI_Level", "BASIC"];
+                    if (_currentLevel != "FULL") then {
+                        [_unit, "MEDIUM"] call BE_AI_SetUnitLevel;
+                        
+                        // Habilitar IA de combate
+                        _unit enableAI "TARGET";
+                        _unit enableAI "AUTOTARGET";
+                        
+                        // Programar vuelta a nivel original después de un tiempo
+                        [_unit, _currentLevel, _currentTime + BE_AI_AlertResponseTime] spawn {
+                            params ["_unit", "_originalLevel", "_endTime"];
+                            waitUntil {time > _endTime || !alive _unit || behaviour _unit == "COMBAT"};
+                            
+                            // Si no entró en combate real, volver a nivel original
+                            if (alive _unit && behaviour _unit != "COMBAT") then {
+                                [_unit, _originalLevel] call BE_AI_SetUnitLevel;
+                            };
+                        };
+                    };
+                    
+                    // Establecer comportamiento de alerta
+                    _unit setBehaviour "AWARE";
+                    _unit setCombatMode "YELLOW";
+                    
+                    // Hacer que el grupo responda a la alerta
+                    private _group = group _unit;
+                    if (_unit == leader _group) then {
+                        // Si es líder, mover grupo hacia la alerta
+                        private _wp = _group addWaypoint [_alertPos, 0];
+                        _wp setWaypointType "MOVE";
+                        _wp setWaypointBehaviour "AWARE";
+                        _wp setWaypointCombatMode "YELLOW";
+                        _wp setWaypointSpeed "NORMAL";
+                        
+                        // Debug
+                        if (BE_AI_Debug) then {
+                            systemChat format ["Grupo %1 respondiendo a alerta de combate", groupId _group];
+                        };
+                    };
+                    
+                    // Mirar hacia la alerta
+                    _unit doWatch _alertPos;
+                };
+            } forEach _alertsToProcess;
+        };
+    } forEach (allUnits select {!isPlayer _x});
+    
+    // También procesar grupos proxy
+    {
+        _x params ["_originalGroup", "_proxy"];
+        _proxy params ["_dummyGroup", "_dummy", "_proxyData", "_lastUpdate", "_pendingConversion"];
+        
+        if (alive _dummy && !_pendingConversion) then {
+            private _proxyPos = getPosATL _dummy;
+            private _proxySide = _proxyData select 5; // Lado del proxy
+            
+            // Verificar alertas relevantes
+            {
+                _x params ["_alertPos", "_alertSide", "_alertTime", "_alertType"];
+                
+                // Comprobar si la alerta es para el mismo bando y está dentro del rango
+                if (_proxySide == _alertSide && _proxyPos distance _alertPos < BE_AI_AlertPropagationDistance) then {
+                    // Reconvertir proxy a grupo real para responder
+                    _proxy set [4, true]; // Marcar para conversión
+                    [_proxy] spawn BE_AI_ConvertFromProxy;
+                    
+                    if (BE_AI_Debug) then {
+                        systemChat format ["Proxy reconvertido para responder a combate en %1", _alertPos];
+                    };
+                };
+            } forEach _alertsToProcess;
+        };
+    } forEach BE_AI_ProxyGroups;
+};
+
+// ==================== INICIALIZACIÓN DEL SISTEMA ====================
+// Función principal de inicialización
+BE_AI_InitSystem = {
+    // Evitar inicialización duplicada
+    if (BE_AI_Initialized) exitWith {
+        if (BE_AI_Debug) then {systemChat "BE Advanced AI System: Ya inicializado"};
+    };
+    
+    // Mensaje de bienvenida
+    if (BE_AI_Debug) then {systemChat format ["Iniciando BE Advanced AI System v%1", BE_AI_Version]};
+    
+    // Ajustar configuración según modo de rendimiento
+    if (BE_AI_PerformanceMode == 2) then {
+        // Modo Alto Rendimiento
+        BE_AI_MaxFullAI = BE_AI_MaxFullAI * 0.7;
+        BE_AI_LOD_CloseRange = BE_AI_LOD_CloseRange * 0.8;
+        BE_AI_LOD_MediumRange = BE_AI_LOD_MediumRange * 0.8;
+        BE_AI_ShadowMinDistance = BE_AI_ShadowMinDistance * 0.9;
+    } else {
+        if (BE_AI_PerformanceMode == 3) then {
+            // Modo Ultra (máximo rendimiento)
+            BE_AI_MaxFullAI = BE_AI_MaxFullAI * 0.5;
+            BE_AI_LOD_CloseRange = BE_AI_LOD_CloseRange * 0.6;
+            BE_AI_LOD_MediumRange = BE_AI_LOD_MediumRange * 0.6;
+            BE_AI_ShadowMinDistance = BE_AI_ShadowMinDistance * 0.7;
+            BE_AI_ProxyMinDistance = BE_AI_ProxyMinDistance * 0.8;
+        };
+    };
+    
+    // Registrar todas las unidades IA existentes
+    {
+        if (!isPlayer _x) then {[_x] call BE_AI_RegisterUnit};
+    } forEach allUnits;
+    
+    // Monitorear nuevas unidades
+    [] spawn {
+        while {BE_AI_SystemActive} do {
+            {
+                if (!isPlayer _x && !(_x in BE_AI_TrackedUnits)) then {
+                    [_x] call BE_AI_RegisterUnit;
+                };
+            } forEach allUnits;
+            
+            // Limpiar unidades muertas
+            call BE_AI_CleanupDeadUnits;
+            
+            sleep 5;
+        };
+    };
+    
+    // Inicializar subsistemas según configuración
+    if (BE_AI_UseDirector) then {
+        call BE_AI_InitDirector;
+        BE_AI_AllSystems pushBack "Director";
+    };
+    
+    if (BE_AI_UseProxies) then {
+        call BE_AI_InitProxies;
+        BE_AI_AllSystems pushBack "Proxies";
+    };
+    
+    if (BE_AI_UseShadowAI) then {
+        call BE_AI_InitShadowAI;
+        BE_AI_AllSystems pushBack "Shadow AI";
+    };
+    
+    if (BE_AI_UsePathCache) then {
+        call BE_AI_InitPathCache;
+        BE_AI_AllSystems pushBack "Path Cache";
+    };
+    
+    if (BE_AI_UseStreamingBehavior) then {
+        call BE_AI_InitStreamingBehavior;
+        BE_AI_AllSystems pushBack "Streaming Behavior";
+    };
+    
+    // Añadir sistema de alertas de combate
+    call BE_AI_InitAlertSystem;
+    BE_AI_AllSystems pushBack "Combat Alerts";
+    
+    // Mostrar estadísticas periódicamente
+    if (BE_AI_Debug) then {
+        [] spawn {
+            while {BE_AI_SystemActive} do {
+                call BE_AI_ShowStats;
+                sleep 30;
+            };
+        };
+    };
+    
+    // Sistema inicializado
+    BE_AI_Initialized = true;
+    
+    if (BE_AI_Debug) then {
+        systemChat format ["BE Advanced AI System iniciado - Subsistemas: %1", BE_AI_AllSystems joinString ", "];
+    };
+};
+
+// Iniciar sistema
+[] spawn {
+    sleep 2; // Pequeña espera para que la misión se estabilice
+    call BE_AI_InitSystem;
+};
+
+// Función pública para reiniciar el sistema
+BE_AI_Restart = {
+    if (BE_AI_Initialized) then {
+        BE_AI_SystemActive = false;
+        sleep 1;
+        
+        // Limpiar variables
+        BE_AI_Initialized = false;
+        BE_AI_AllSystems = [];
+        BE_AI_TrackedUnits = [];
+        BE_AI_ProxyGroups = [];
+        BE_AI_PathCache = createHashMap;
+        BE_AI_ShadowUnits = [];
+        BE_AI_UnitLODLevels = createHashMap;
+        
+        // Reiniciar
+        BE_AI_SystemActive = true;
+        call BE_AI_InitSystem;
+        
+        systemChat "BE Advanced AI System reiniciado";
+    } else {
+        call BE_AI_InitSystem;
+    };
+};
+
+// Mostrar mensajes de información
+BE_AI_ShowInfo = {
+    private _text = "<t align='center' size='1.5'>BE Advanced AI System</t><br/><br/>";
+    _text = _text + format ["Versión: <t color='#FFCC00'>%1</t><br/>", BE_AI_Version];
+    _text = _text + format ["Estado: <t color='#%1'>%2</t><br/>", ["FF0000", "00FF00"] select BE_AI_SystemActive, ["Inactivo", "Activo"] select BE_AI_SystemActive];
+    _text = _text + format ["Modo: <t color='#FFCC00'>%1</t><br/>", ["Equilibrado", "Alto rendimiento", "Ultra"] select (BE_AI_PerformanceMode - 1)];
+    _text = _text + "<br/><t align='left'>Sistemas activos:</t><br/>";
+    {_text = _text + format ["• <t color='#AAFFAA'>%1</t><br/>", _x]} forEach BE_AI_AllSystems;
+    _text = _text + "<br/><t align='left'>Estadísticas:</t><br/>";
+    _text = _text + format ["• Unidades gestionadas: <t color='#AAFFAA'>%1</t><br/>", count BE_AI_TrackedUnits];
+    _text = _text + format ["• Grupos proxy: <t color='#AAFFAA'>%1</t><br/>", count BE_AI_ProxyGroups];
+    _text = _text + format ["• Unidades shadow: <t color='#AAFFAA'>%1</t><br/>", count BE_AI_ShadowUnits];
+    _text = _text + format ["• Aciertos de caché: <t color='#AAFFAA'>%1</t><br/>", BE_AI_Stats getOrDefault ["PathCacheHits", 0]];
+    hint parseText _text;
+};
+
+// Añadir acción de menú para info
+if (hasInterface) then {
+    player addAction ["<t color='#FFCC00'>Info Sistema IA</t>", {call BE_AI_ShowInfo}, nil, 1, false, true, "", "true", 10, false, ""];
+};
+
+// Mensaje de carga
+if (BE_AI_Debug) then {
+    systemChat "BE Advanced AI System cargado. Inicializando...";
+};
+
+// Inicializar sistema táctico
+BE_AI_InitTacticalSystem = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema Táctico"};
+    
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseTacticalBehaviors} do {
+            {
+                private _unit = _x;
+                // Solo procesar unidades en combate y con IA completa
+                if (alive _unit && 
+                    behaviour _unit == "COMBAT" && 
+                    _unit getVariable ["BE_AI_Level", ""] == "FULL" &&
+                    !isPlayer _unit &&
+                    !(_unit getVariable ["BE_AI_UsingTactics", false])) then {
+                    
+                    [_unit] spawn BE_AI_ApplyTacticalBehavior;
+                };
+                sleep 0.05; // Distribuir carga
+            } forEach BE_AI_TrackedUnits;
+            sleep 3;
+        };
+    };
+};
+
+// Aplicar comportamiento táctico a una unidad
+BE_AI_ApplyTacticalBehavior = {
+    params ["_unit"];
+    
+    // Evitar repetición
+    if (_unit getVariable ["BE_AI_UsingTactics", false]) exitWith {};
+    _unit setVariable ["BE_AI_UsingTactics", true];
+    
+    private _enemy = _unit findNearestEnemy _unit;
+    if (isNull _enemy) exitWith {_unit setVariable ["BE_AI_UsingTactics", false]};
+    
+    private _enemyPos = getPosATL _enemy;
+    private _unitPos = getPosATL _unit;
+    
+    // OPCIÓN 1: USAR EDIFICIO CERCANO
+    if (random 100 < 65) then { // 65% de probabilidad
+        private _buildings = nearestObjects [_unitPos, ["House", "Building"], BE_AI_BuildingSearchDistance];
+        _buildings = _buildings select {count (_x buildingPos -1) > 0};
+        
+        if (count _buildings > 0) then {
+            private _building = selectRandom _buildings;
+            
+            // Verificar si hay demasiadas unidades en este edificio
+            private _unitsInBuilding = {_x distance _building < 10} count units group _unit;
+            if (_unitsInBuilding < BE_AI_MaxUnitsPerBuilding) then {
+                private _buildingPositions = _building buildingPos -1;
+                
+                // Encontrar posiciones con línea de visión al enemigo
+                private _goodPositions = [];
+                {
+                    private _vis = [objNull, "VIEW"] checkVisibility [_x vectorAdd [0,0,1], _enemyPos vectorAdd [0,0,1.5]];
+                    if (_vis > 0.2) then {_goodPositions pushBack _x};
+                } forEach _buildingPositions;
+                
+                // Si no hay buenas posiciones, usar cualquiera
+                if (count _goodPositions == 0) then {_goodPositions = _buildingPositions};
+                
+                // Elegir posición y moverse a ella
+                private _targetPos = selectRandom _goodPositions;
+                _unit doMove _targetPos;
+                
+                // Esperar a que llegue
+                [_unit, _targetPos, _enemy] spawn {
+                    params ["_unit", "_targetPos", "_enemy"];
+                    private _timeout = time + 30;
+                    waitUntil {sleep 0.5; _unit distance _targetPos < 2 || time > _timeout || !alive _unit};
+                    
+                    if (alive _unit) then {
+                        // Tomar posición de disparo apropiada
+                        _unit setUnitPos "MIDDLE";
+                        _unit doWatch (getPosATL _enemy);
+                        sleep (random 3 + 2);
+                        
+                        // Alternar entre agachado y de pie ocasionalmente
+                        while {alive _unit && behaviour _unit == "COMBAT"} do {
+                            _unit setUnitPos (selectRandom ["UP", "MIDDLE"]);
+                            sleep (random 5 + 3);
+                        };
+                        
+                        _unit setUnitPos "AUTO";
+                    };
+                    _unit setVariable ["BE_AI_UsingTactics", false];
+                };
+                
+                if (BE_AI_Debug) then {systemChat format ["IA táctica: %1 usando edificio", name _unit]};
+                
+            } else {
+                // Demasiadas unidades en el edificio, usar otro comportamiento
+                [_unit, _enemy] call BE_AI_UseCoverTactic;
+            };
+        } else {
+            // No hay edificios, usar cobertura
+            [_unit, _enemy] call BE_AI_UseCoverTactic;
+        };
+    } else {
+        // No elegimos edificio, usar cobertura
+        [_unit, _enemy] call BE_AI_UseCoverTactic;
+    };
+};
+
+// Táctica de uso de cobertura
+BE_AI_UseCoverTactic = {
+    params ["_unit", "_enemy"];
+    
+    private _enemyPos = getPosATL _enemy;
+    private _unitPos = getPosATL _unit;
+    private _enemyDir = _unitPos getDir _enemyPos;
+    
+    // Buscar objetos que puedan servir de cobertura
+    private _covers = nearestObjects [_unitPos, ["ROCK", "WALL", "CAR", "HOUSE", "TREE", "SMALL TREE", "FENCE"], BE_AI_CoverSearchDistance];
+    
+    if (count _covers > 0) then {
+        // Encontrar mejor cobertura (más cercana al soldado pero opuesta al enemigo)
+        private _bestCover = objNull;
+        private _bestScore = 0;
+        
+        {
+            private _cover = _x;
+            private _coverPos = getPosATL _cover;
+            private _distToUnit = _unitPos distance _coverPos;
+            private _distToEnemy = _enemyPos distance _coverPos;
+            private _coverDir = _coverPos getDir _enemyPos;
+            
+            // Dirección opuesta al enemigo (para ponerse detrás de la cobertura)
+            private _coverPosOpposite = [
+                _coverPos select 0,
+                _coverPos select 1,
+                _coverPos select 2
+            ];
+            
+            private _dirDiff = abs((_unitPos getDir _coverPos) - (_coverPos getDir _enemyPos));
+            if (_dirDiff > 180) then {_dirDiff = 360 - _dirDiff};
+            
+            // Calcular puntuación (menor distancia unidad-cobertura, mayor distancia enemigo-cobertura)
+            private _score = (30 / (_distToUnit max 1)) + (_distToEnemy / 10) + (_dirDiff / 10);
+            
+            if (_score > _bestScore) then {
+                _bestScore = _score;
+                _bestCover = _cover;
+            };
+        } forEach _covers;
+        
+        if (!isNull _bestCover) then {
+            private _coverPos = getPosATL _bestCover;
+            private _coverSize = sizeOf typeOf _bestCover;
+            
+            // Calcular posición detrás de la cobertura respecto al enemigo
+            private _dirAwayFromEnemy = _coverPos getDir _enemyPos;
+            private _targetPos = _coverPos getPos [(_coverSize / 2) + 1, _dirAwayFromEnemy];
+            
+            // Moverse a la cobertura
+            _unit doMove _targetPos;
+            
+            // Comportamiento tras llegar a la cobertura
+            [_unit, _targetPos, _enemy, _bestCover] spawn {
+                params ["_unit", "_targetPos", "_enemy", "_cover"];
+                private _timeout = time + 20;
+                waitUntil {sleep 0.5; _unit distance _targetPos < 3 || time > _timeout || !alive _unit};
+                
+                if (alive _unit) then {
+                    // Ponerse a cubierto y vigilar
+                    _unit setUnitPos "MIDDLE";
+                    _unit doWatch (getPosATL _enemy);
+                    
+                    // Salir y disparar ocasionalmente
+                    while {alive _unit && behaviour _unit == "COMBAT" && _unit distance _cover < 5} do {
+                        if (random 1 > 0.7) then {
+                            _unit setUnitPos "UP";
+                            sleep (0.5 + random 2);
+                            _unit setUnitPos "MIDDLE";
+                        };
+                        sleep (random 3 + 1);
+                    };
+                    
+                    _unit setUnitPos "AUTO";
+                };
+                _unit setVariable ["BE_AI_UsingTactics", false];
+            };
+            
+            if (BE_AI_Debug) then {systemChat format ["IA táctica: %1 usando cobertura", name _unit]};
+            
+        } else {
+            // No hay buena cobertura, usar táctica de movimiento evasivo
+            [_unit, _enemy] call BE_AI_UseFlankTactic;
+        };
+    } else {
+        // No hay coberturas, intentar flanquear
+        [_unit, _enemy] call BE_AI_UseFlankTactic;
+    };
+};
+
+// Táctica de flanqueo
+BE_AI_UseFlankTactic = {
+    params ["_unit", "_enemy"];
+    
+    private _enemyPos = getPosATL _enemy;
+    private _unitPos = getPosATL _unit;
+    
+    // Determinar dirección de flanqueo (derecha o izquierda)
+    private _flankRight = random 1 > 0.5;
+    private _baseDir = _enemyPos getDir _unitPos;
+    private _flankAngle = _baseDir + (if (_flankRight) then {90} else {-90});
+    
+    // Calcular posición de flanqueo
+    private _flankDist = 15 + random 10;
+    private _flankPos = _enemyPos getPos [_flankDist, _flankAngle];
+    
+    // Moverse a posición de flanqueo
+    _unit doMove _flankPos;
+    
+    // Comportamiento durante el flanqueo
+    [_unit, _flankPos, _enemy] spawn {
+        params ["_unit", "_flankPos", "_enemy"];
+        private _timeout = time + 30;
+        
+        // Mientras se mueve, usar sprint y agacharse ocasionalmente
+        while {alive _unit && _unit distance _flankPos > 3 && time < _timeout} do {
+            if (random 1 > 0.7) then {_unit setUnitPos "DOWN"} else {_unit setUnitPos "UP"};
+            sleep (0.5 + random 1);
+        };
+        
+        if (alive _unit) then {
+            // Al llegar, tomar postura de combate
+            _unit setUnitPos "MIDDLE";
+            _unit doWatch (getPosATL _enemy);
+            sleep (1 + random 2);
+        };
+        
+        _unit setUnitPos "AUTO";
+        _unit setVariable ["BE_AI_UsingTactics", false];
+    };
+    
+    if (BE_AI_Debug) then {systemChat format ["IA táctica: %1 flanqueando", name _unit]};
+};
+
+// Añadir sistema táctico a la inicialización
+BE_AI_InitSystem = {
+    // [...código existente...]
+    
+    // Inicializar subsistemas
+    if (BE_AI_UseDirector) then {
+        call BE_AI_InitDirector;
+        BE_AI_AllSystems pushBack "Director";
+    };
+    
+    // [...resto de subsistemas...]
+    
+    // Añadir sistema táctico
+    if (BE_AI_UseTacticalBehaviors) then {
+        call BE_AI_InitTacticalSystem;
+        BE_AI_AllSystems pushBack "Tactical Behaviors";
+    };
+};
+
+
+// Inicializar sistema de gestión de vehículos
+BE_AI_InitVehicleSystem = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema de Gestión de Vehículos"};
+    
+    // Registrar vehículos existentes
+    call BE_AI_RegisterVehicles;
+    
+    // Bucle principal de gestión de vehículos
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseVehicleSystem} do {
+            // Actualizar registro de vehículos
+            if ((count allUnits) > 0) then {
+                call BE_AI_RegisterVehicles;
+            };
+            
+            // Gestionar comportamiento de vehículos
+            call BE_AI_UpdateVehicleBehavior;
+            
+            sleep BE_AI_VehicleUpdateInterval;
+        };
+    };
+};
+
+// Registrar vehículos para gestión
+BE_AI_RegisterVehicles = {
+    // Buscar vehículos controlados por IA con armamento
+    private _vehicles = vehicles select {
+        !isNull _x &&
+        alive _x &&
+        {!isPlayer driver _x} &&
+        {!isPlayer gunner _x} &&
+        {!isPlayer commander _x} &&
+        {count weapons _x > 0} &&
+        {!(_x getVariable ["BE_AI_ManagedVehicle", false])}
+    };
+    
+    // Registrar nuevos vehículos
+    {
+        private _veh = _x;
+        
+        // Marcar como gestionado
+        _veh setVariable ["BE_AI_ManagedVehicle", true];
+        _veh setVariable ["BE_AI_LastTargetCheck", 0];
+        _veh setVariable ["BE_AI_EngageAttempts", 0];
+        
+        // Añadir a la lista de vehículos gestionados
+        BE_AI_ManagedVehicles pushBack _veh;
+        
+        // Debug
+        if (BE_AI_Debug) then {
+            systemChat format ["BE Advanced AI: Vehículo registrado - %1", typeOf _veh];
+        };
+    } forEach _vehicles;
+    
+    // Limpiar vehículos destruidos
+    BE_AI_ManagedVehicles = BE_AI_ManagedVehicles select {!isNull _x && alive _x};
+};
+
+// Actualizar comportamiento de vehículos
+BE_AI_UpdateVehicleBehavior = {
+    {
+        private _veh = _x;
+        if (!alive _veh) then {continue};
+        
+        // Verificar si el vehículo tiene tripulación
+        private _hasGunner = !isNull gunner _veh;
+        private _hasCommander = !isNull commander _veh;
+        private _hasDriver = !isNull driver _veh;
+        
+        // Solo procesamos vehículos con al menos un tripulante
+        if (_hasGunner || _hasCommander || _hasDriver) then {
+            // Asegurarse que la tripulación tiene IA completa
+            if (_hasGunner && !isPlayer gunner _veh) then {
+                private _gunner = gunner _veh;
+                _gunner enableAI "ALL";
+                _gunner setSkill 1;
+            };
+            
+            if (_hasCommander && !isPlayer commander _veh) then {
+                private _commander = commander _veh;
+                _commander enableAI "ALL";
+                _commander setSkill 1;
+            };
+            
+            // Forzar detección y ataque de objetivos
+            [_veh] call BE_AI_VehicleEnemyDetection;
+        };
+    } forEach BE_AI_ManagedVehicles;
+};
+
+// Mejorar detección de enemigos para vehículos
+BE_AI_VehicleEnemyDetection = {
+    params ["_veh"];
+    
+    // Verificar si es momento de buscar objetivos
+    if (time - (_veh getVariable ["BE_AI_LastTargetCheck", 0]) < 2) exitWith {};
+    _veh setVariable ["BE_AI_LastTargetCheck", time];
+    
+    // Posición y lado del vehículo
+    private _vehPos = getPosATL _veh;
+    private _vehSide = side effectiveCommander _veh;
+    
+    // Buscar objetivos potenciales (unidades y vehículos)
+    private _potentialTargets = _vehPos nearEntities [["Man", "Car", "Tank", "Air"], 800];
+    _potentialTargets = _potentialTargets select {
+        alive _x && 
+        (side _x) getFriend _vehSide < 0.6 && 
+        !(side _x == civilian)
+    };
+    
+    // Si no hay objetivos, salir
+    if (count _potentialTargets == 0) exitWith {};
+    
+    // Ordenar por prioridad y distancia
+    private _targetsByPriority = [];
+    
+    {
+        private _target = _x;
+        private _distance = _vehPos distance _target;
+        private _priority = 0;
+        
+        // Calcular prioridad según tipo
+        if (_target isKindOf "Tank") then {_priority = 4};
+        if (_target isKindOf "APC") then {_priority = 3};
+        if (_target isKindOf "Car" && count weapons _target > 0) then {_priority = 2};
+        if (_target isKindOf "Car") then {_priority = 1};
+        if (_target isKindOf "Man") then {_priority = 0};
+        
+        // Ajustar por distancia (más cerca = mayor prioridad)
+        _priority = _priority + (1000 / (_distance max 1));
+        
+        // Añadir a lista
+        _targetsByPriority pushBack [_target, _priority, _distance];
+    } forEach _potentialTargets;
+    
+    // Ordenar por prioridad (mayor a menor)
+    _targetsByPriority sort false;
+    
+    // Si hay objetivos, hacer que el vehículo ataque
+    if (count _targetsByPriority > 0) then {
+        private _bestTarget = (_targetsByPriority select 0) select 0;
+        
+        // Forzar ataque
+        private _commander = commander _veh;
+        private _gunner = gunner _veh;
+        
+        // Asegurar detección del objetivo
+        if (!isNull _commander && !isPlayer _commander) then {
+            _commander reveal [_bestTarget, 4];
+            _commander doWatch _bestTarget;
+            _commander doTarget _bestTarget;
+            _commander doFire _bestTarget;
+        };
+        
+        if (!isNull _gunner && !isPlayer _gunner) then {
+            _gunner reveal [_bestTarget, 4];
+            _gunner doWatch _bestTarget;
+            _gunner doTarget _bestTarget;
+            _gunner doFire _bestTarget;
+        };
+        
+        // Ajustar comportamiento del grupo
+        private _vehGroup = group effectiveCommander _veh;
+        _vehGroup setBehaviour "COMBAT";
+        _vehGroup setCombatMode "RED";
+        
+        // Forzar estabilidad del vehículo para disparar
+        if (!isNull driver _veh && !isPlayer driver _veh) then {
+            // Si el vehículo se está moviendo, detenerlo brevemente
+            if (speed _veh > 5) then {
+                driver _veh disableAI "PATH";
+                _veh setVelocity [0,0,0];
+                
+                [_veh, driver _veh] spawn {
+                    params ["_vehicle", "_driver"];
+                    sleep 3;
+                    if (alive _driver && alive _vehicle) then {
+                        _driver enableAI "PATH";
+                    };
+                };
+            };
+        };
+        
+        // Debug
+        if (BE_AI_Debug) then {
+            systemChat format ["Vehículo %1 atacando a %2 a %3m", 
+                typeOf _veh, 
+                typeOf _bestTarget,
+                floor (_vehPos distance _bestTarget)
+            ];
+        };
+    };
+};
+
+// ==== SISTEMA DE COMUNICACIÓN TÁCTICA DE EQUIPO ====
+BE_AI_UseTeamComms = true;           // Activar sistema
+BE_AI_CommsRange = 300;              // Rango de comunicación entre unidades
+BE_AI_KnowledgeShareInterval = 2;    // Intervalo de compartir información
+
+// Variables del sistema de comunicación
+BE_AI_UnitKnowledge = createHashMap;
+
+// Inicializar sistema de comunicación táctica
+BE_AI_InitTeamCommsSystem = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema de Comunicación Táctica"};
+    
+    // Bucle principal de comunicación
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseTeamComms} do {
+            // Compartir conocimiento entre unidades
+            call BE_AI_ShareUnitKnowledge;
+            
+            sleep BE_AI_KnowledgeShareInterval;
+        };
+    };
+};
+
+// Compartir conocimiento entre unidades
+BE_AI_ShareUnitKnowledge = {
+    // Agrupar unidades por lado
+    private _unitsBySide = [];
+    {
+        private _side = _x;
+        
+        // Obtener todas las unidades de este lado
+        private _sideUnits = allUnits select {
+            alive _x && 
+            side _x == _side && 
+            !isPlayer _x
+        };
+        
+        _unitsBySide pushBack [_side, _sideUnits];
+    } forEach [WEST, EAST, RESISTANCE, CIVILIAN];
+    
+    // Procesar cada lado
+    {
+        _x params ["_side", "_units"];
+        
+        // Procesar cada unidad de este lado
+        {
+            private _unit = _x;
+            
+            // Sólo procesar unidades que pueden detectar enemigos
+            if (!(_unit getVariable ["BE_AI_IsShadow", false]) && 
+                !(_unit getVariable ["BE_AI_IsProxy", false])) then {
+                
+                // Ver qué enemigos conoce esta unidad
+                private _knownEnemies = [];
+                {
+                    private _enemy = _x;
+                    if (alive _enemy && 
+                        side _enemy getFriend _side < 0.6 && 
+                        _unit knowsAbout _enemy > 1.5) then {
+                        
+                        _knownEnemies pushBack [_enemy, getPosATL _enemy, time];
+                    };
+                } forEach (_unit nearEntities ["Man", 200]);
+                
+                // Si conoce enemigos, compartir con unidades cercanas
+                if (count _knownEnemies > 0) then {
+                    {
+                        private _nearAlly = _x;
+                        
+                        // No compartir con la propia unidad o con jugadores
+                        if (_nearAlly != _unit && !isPlayer _nearAlly && alive _nearAlly) then {
+                            // Compartir cada enemigo conocido
+                            {
+                                _x params ["_enemy", "_enemyPos", "_timeSpotted"];
+                                
+                                if (alive _enemy) then {
+                                    // Revelar enemigo a esta unidad aliada
+                                    private _currentKnowledge = _nearAlly knowsAbout _enemy;
+                                    
+                                    // Solo aumentar conocimiento si es bajo
+                                    if (_currentKnowledge < 2) then {
+                                        _nearAlly reveal [_enemy, 2 max _currentKnowledge];
+                                        
+                                        // Si la unidad está en modo básico/shadow, mejorar temporalmente
+                                        if (_nearAlly getVariable ["BE_AI_Level", ""] == "BASIC") then {
+                                            _nearAlly enableAI "TARGET";
+                                            _nearAlly enableAI "AUTOTARGET";
+                                            
+                                            // Restaurar después de un tiempo
+                                            [_nearAlly] spawn {
+                                                params ["_unit"];
+                                                sleep 30;
+                                                if (alive _unit && 
+                                                    _unit getVariable ["BE_AI_Level", ""] == "BASIC" && 
+                                                    behaviour _unit != "COMBAT") then {
+                                                    _unit disableAI "TARGET";
+                                                    _unit disableAI "AUTOTARGET";
+                                                };
+                                            };
+                                        };
+                                        
+                                        // Hacer que las unidades inactivas se orienten hacia la amenaza
+                                        if (unitReady _nearAlly && random 1 > 0.5) then {
+                                            _nearAlly doWatch _enemyPos;
+                                        };
+                                    };
+                                };
+                            } forEach _knownEnemies;
+                        };
+                    } forEach (_unit nearEntities [["Man", "Car", "Tank"], BE_AI_CommsRange] select {side _x == _side});
+                };
+            };
+        } forEach _units;
+    } forEach _unitsBySide;
+};
+
+// Añadir sistemas a la inicialización
+BE_AI_InitSystem = {
+    // [...código existente...]
+    
+    // Añadir sistema de vehículos
+    if (BE_AI_UseVehicleSystem) then {
+        call BE_AI_InitVehicleSystem;
+        BE_AI_AllSystems pushBack "Vehicle Management";
+    };
+    
+    // Añadir sistema de comunicación táctica
+    if (BE_AI_UseTeamComms) then {
+        call BE_AI_InitTeamCommsSystem;
+        BE_AI_AllSystems pushBack "Tactical Comms";
+    };
+    
+    // [...resto del código existente...]
+};
