@@ -1,0 +1,1128 @@
+// ==================== CONFIGURACIÓN ====================
+// General
+BE_AI_Debug = false;              // Mostrar mensajes de depuración
+BE_AI_SystemActive = true;        // Sistema activo
+BE_AI_PerformanceMode = 2;        // 1: Equilibrado, 2: Alto rendimiento, 3: Ultra
+
+// Módulos activos
+BE_AI_UseDirector = true;         // Sistema Director
+BE_AI_UseProxies = true;          // Sistema de Proxies
+BE_AI_UseStreamingBehavior = true; // Streaming de comportamiento
+BE_AI_UsePathCache = true;        // Cacheo de pathfinding
+BE_AI_UseShadowAI = true;         // Sistema Shadow AI
+
+// Director de IA
+BE_AI_MaxFullAI = 30;             // Máximo de unidades con IA completa
+BE_AI_MaxMediumAI = 30;           // Máximo de unidades con IA media
+BE_AI_DirectorInterval = 3;       // Segundos entre actualizaciones
+
+// Streaming de Comportamiento
+BE_AI_LOD_CloseRange = 300;       // Distancia para comportamiento completo
+BE_AI_LOD_MediumRange = 600;      // Distancia para comportamiento medio
+BE_AI_LOD_FarRange = 1000;        // Distancia para comportamiento básico
+
+// Sistema de Proxies
+BE_AI_ProxyGroupSize = 5;         // Unidades por grupo proxy
+BE_AI_ProxyMinDistance = 400;     // Distancia mínima para aplicar proxies
+BE_AI_ProxyUpdateInterval = 0.2;  // Intervalo de actualización (segundos)
+
+// Shadow AI
+BE_AI_ShadowMinDistance = 600;    // Distancia mínima para sombras
+BE_AI_ShadowUpdateInterval = 1;   // Intervalo de actualización
+
+// Cacheo de Rutas
+BE_AI_PathCacheSize = 50;         // Máximo de rutas en caché
+BE_AI_PathCacheMaxAge = 300;      // Tiempo máximo de caché (segundos)
+
+// Sistema de Alertas de Combate
+BE_AI_AlertPropagationDistance = 800; // Radio de propagación de alertas
+BE_AI_AlertResponseTime = 30;     // Tiempo de respuesta a alertas
+BE_AI_AlertProcessInterval = 3;   // Intervalo de procesamiento
+
+// ==== SISTEMA DE COMPORTAMIENTOS TÁCTICOS AVANZADOS ====
+BE_AI_UseTacticalBehaviors = true;   // Puedes desactivarlo si causa problemas
+BE_AI_BuildingSearchDistance = 30;   // Distancia para buscar edificios
+BE_AI_CoverSearchDistance = 15;      // Distancia para buscar cobertura
+BE_AI_MaxUnitsPerBuilding = 5;       // Máximo de unidades por edificio
+
+// ==== SISTEMA DE INTELIGENCIA DE ARMAMENTO ANTITANQUE ====
+BE_AI_UseATWeaponSystem = true;     // Activar/desactivar sistema
+BE_AI_ATWeaponCheckInterval = 5;    // Intervalo de comprobación (segundos)
+BE_AI_ATWeaponDetectionRange = 30;  // Distancia para detectar armas tiradas
+BE_AI_GroupSizeThreshold = 3;       // Número mínimo de enemigos agrupados para usar AT
+
+// ==== SISTEMA DE GESTIÓN DE VEHÍCULOS DE COMBATE ====
+BE_AI_UseVehicleSystem = true;        // Activar sistema
+BE_AI_VehicleUpdateInterval = 3;      // Segundos entre actualizaciones
+BE_AI_VehiclePriority = true;         // Dar siempre alta prioridad a vehículos
+
+// Variables del sistema de vehículos
+BE_AI_ManagedVehicles = [];
+BE_AI_VehicleTargets = [];
+
+// Lista de lanzamisiles/armas antitanque a reconocer
+BE_AI_ATWeapons = [
+    "launch_RPG7_F", 
+    "launch_RPG32_F", 
+    "launch_NLAW_F", 
+    "launch_B_Titan_F", 
+    "launch_O_Titan_F", 
+    "launch_I_Titan_F",
+    "launch_MRAWS_green_F",
+    "launch_MRAWS_olive_F",
+    "launch_MRAWS_sand_F",
+    "launch_O_Vorona_brown_F",
+    "launch_O_Vorona_green_F",
+    "launch_B_Titan_short_F",
+    "launch_O_Titan_short_F",
+    "launch_I_Titan_short_F"
+];
+
+// Función para inicializar el sistema de armamento AT
+BE_AI_InitATWeaponSystem = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema de Inteligencia AT"};
+    
+    // Bucle principal para verificar uso táctico de AT
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseATWeaponSystem} do {
+            {
+                private _unit = _x;
+                // Solo procesar unidades vivas, en combate y no ocupadas con otra tarea
+                if (alive _unit && 
+                    !isPlayer _unit && 
+                    behaviour _unit == "COMBAT" &&
+                    !(_unit getVariable ["BE_AI_BusyWithAT", false])) then {
+                    
+                    // Verificar si debe usar un lanzamisiles que ya tiene
+                    [_unit] call BE_AI_CheckUseATWeapon;
+                    
+                    // Verificar si hay un lanzamisiles cercano para recoger
+                    [_unit] call BE_AI_CheckNearbyATWeapons;
+                };
+                sleep 0.05; // Distribuir procesamiento
+            } forEach BE_AI_TrackedUnits;
+            sleep BE_AI_ATWeaponCheckInterval;
+        };
+    };
+};
+
+// Comprobar si la unidad debe usar un lanzamisiles que ya tiene
+BE_AI_CheckUseATWeapon = {
+    params ["_unit"];
+    
+    // Verificar si tiene un lanzamisiles
+    private _hasAT = false;
+    private _atWeapon = "";
+    private _atMags = [];
+    
+    // Comprobar si el arma secundaria es un AT
+    private _secondaryWeapon = secondaryWeapon _unit;
+    if (_secondaryWeapon != "" && {_secondaryWeapon in BE_AI_ATWeapons}) then {
+        _hasAT = true;
+        _atWeapon = _secondaryWeapon;
+        // Obtener munición compatible
+        _atMags = getArray (configFile >> "CfgWeapons" >> _atWeapon >> "magazines");
+    };
+    
+    // Si no tiene AT, salir
+    if (!_hasAT || count _atMags == 0) exitWith {};
+    
+    // Verificar si tiene munición para el AT
+    private _hasMag = false;
+    {
+        if (_x in _atMags) exitWith {_hasMag = true};
+    } forEach (magazines _unit);
+    
+    if (!_hasMag) exitWith {};
+    
+    // Buscar grupos de enemigos cercanos (3+ unidades)
+    private _enemyGroups = [_unit] call BE_AI_FindEnemyGroups;
+    
+    if (count _enemyGroups > 0) then {
+        // Seleccionar grupo más numeroso
+        _enemyGroups sort false; // Mayor a menor
+        private _targetGroup = _enemyGroups select 0;
+        _targetGroup params ["_groupUnits", "_groupCenter"];
+        
+        // Usar AT contra el grupo
+        [_unit, _groupCenter, _atWeapon] spawn BE_AI_UseATAgainstTarget;
+    };
+};
+
+// Encontrar grupos de enemigos
+BE_AI_FindEnemyGroups = {
+    params ["_unit"];
+    
+    private _unitPos = getPosATL _unit;
+    private _unitSide = side _unit;
+    private _maxRange = 300; // Rango máximo para detectar grupos
+    
+    // Obtener todas las unidades enemigas en rango
+    private _nearUnits = _unitPos nearEntities ["Man", _maxRange];
+    _nearUnits = _nearUnits select {
+        alive _x && 
+        side _x != _unitSide && 
+        side _x != civilian &&
+        side _x getFriend _unitSide < 0.6
+    };
+    
+    // Agrupar unidades cercanas entre sí
+    private _groups = [];
+    private _processedUnits = [];
+    
+    {
+        private _currentUnit = _x;
+        if (!(_currentUnit in _processedUnits)) then {
+            // Encontrar todas las unidades a 15m de esta unidad
+            private _groupUnits = [_currentUnit];
+            private _unitsToCheck = [_currentUnit];
+            _processedUnits pushBack _currentUnit;
+            
+            while {count _unitsToCheck > 0} do {
+                private _checkUnit = _unitsToCheck deleteAt 0;
+                private _nearbyEnemies = (getPosATL _checkUnit) nearEntities ["Man", 15];
+                _nearbyEnemies = _nearbyEnemies select {
+                    alive _x && 
+                    side _x != _unitSide && 
+                    side _x != civilian &&
+                    !(_x in _processedUnits)
+                };
+                
+                {
+                    _groupUnits pushBack _x;
+                    _unitsToCheck pushBack _x;
+                    _processedUnits pushBack _x;
+                } forEach _nearbyEnemies;
+            };
+            
+            // Si el grupo tiene al menos BE_AI_GroupSizeThreshold unidades, registrar
+            if (count _groupUnits >= BE_AI_GroupSizeThreshold) then {
+                // Calcular centro del grupo
+                private _centerPos = [0,0,0];
+                {
+                    _centerPos = _centerPos vectorAdd (getPosATL _x);
+                } forEach _groupUnits;
+                _centerPos = _centerPos vectorMultiply (1 / (count _groupUnits));
+                
+                // Añadir a la lista de grupos [unidades, centro, tamaño]
+                _groups pushBack [_groupUnits, _centerPos, count _groupUnits];
+            };
+        };
+    } forEach _nearUnits;
+    
+    _groups
+};
+
+// Usar AT contra objetivo específico
+BE_AI_UseATAgainstTarget = {
+    params ["_unit", "_targetPos", "_atWeapon"];
+    
+    // Marcar unidad como ocupada
+    _unit setVariable ["BE_AI_BusyWithAT", true];
+    
+    if (BE_AI_Debug) then {
+        systemChat format ["IA AT: %1 usando %2 contra grupo en %3", name _unit, _atWeapon, _targetPos];
+    };
+    
+    // Posición original para volver después
+    private _originalPos = getPosATL _unit;
+    
+    // Moverse a una posición con buena línea de tiro si es necesario
+    private _goodFiringPos = [_unit, _targetPos] call BE_AI_FindGoodFiringPosition;
+    
+    if (_goodFiringPos distance _unit > 5) then {
+        // Moverse a posición de disparo
+        _unit doMove _goodFiringPos;
+        
+        // Esperar a que llegue
+        private _timeout = time + 20;
+        waitUntil {
+            sleep 0.5; 
+            _unit distance _goodFiringPos < 3 || 
+            time > _timeout || 
+            !alive _unit
+        };
+    };
+    
+    if (!alive _unit) exitWith {};
+    
+    // Preparar y disparar AT
+    _unit selectWeapon _atWeapon;
+    sleep 1;
+    
+    // Asegurarse de mirar al objetivo
+    _unit doWatch _targetPos;
+    sleep 2;
+    
+    // Disparar
+    _unit setWeaponReloadingTime [_unit, _atWeapon, 0];
+    _unit forceWeaponFire [_atWeapon, "Single"];
+    
+    // Esperar un poco y volver al comportamiento normal
+    sleep 3;
+    _unit doMove _originalPos;
+    
+    // Liberar unidad
+    _unit setVariable ["BE_AI_BusyWithAT", false];
+};
+
+// Encontrar buena posición para disparar AT
+BE_AI_FindGoodFiringPosition = {
+    params ["_unit", "_targetPos"];
+    
+    private _unitPos = getPosATL _unit;
+    private _bestPos = _unitPos;
+    private _bestScore = 0;
+    
+    // Comprobar posiciones cercanas para encontrar la mejor
+    for "_i" from 0 to 5 do {
+        private _testPos = [
+            (_unitPos select 0) + (random 20 - 10),
+            (_unitPos select 1) + (random 20 - 10),
+            _unitPos select 2
+        ];
+        
+        // Verificar que la posición sea accesible
+        if (!surfaceIsWater _testPos) then {
+            // Comprobar línea de visión
+            private _vis = [objNull, "VIEW"] checkVisibility [
+                _testPos vectorAdd [0,0,1.5], 
+                _targetPos vectorAdd [0,0,1]
+            ];
+            
+            // Calcular puntuación (visibilidad + cobertura)
+            private _score = _vis;
+            
+            // Bonus por cobertura cercana
+            private _covers = nearestObjects [_testPos, ["ROCK", "WALL", "CAR", "HOUSE"], 5];
+            if (count _covers > 0) then {
+                _score = _score + 0.3;
+            };
+            
+            // Si es mejor que la actual, guardar
+            if (_score > _bestScore) then {
+                _bestScore = _score;
+                _bestPos = _testPos;
+            };
+        };
+    };
+    
+    _bestPos
+};
+
+// Comprobar si hay armas AT cercanas para recoger
+BE_AI_CheckNearbyATWeapons = {
+    params ["_unit"];
+    
+    // Si ya tiene un AT, no necesitamos otro
+    if (secondaryWeapon _unit != "" && {secondaryWeapon _unit in BE_AI_ATWeapons}) exitWith {};
+    
+    // Buscar armas en el suelo cercanas
+    private _unitPos = getPosATL _unit;
+    private _nearWeapons = nearestObjects [_unitPos, ["WeaponHolderSimulated", "WeaponHolder"], BE_AI_ATWeaponDetectionRange];
+    
+    private _foundAT = objNull;
+    private _foundATType = "";
+    
+    // Verificar si alguna es un AT
+    {
+        private _weaponHolder = _x;
+        private _weapons = weaponCargo _weaponHolder;
+        
+        {
+            if (_x in BE_AI_ATWeapons) exitWith {
+                _foundAT = _weaponHolder;
+                _foundATType = _x;
+            };
+        } forEach _weapons;
+        
+        if (!isNull _foundAT) exitWith {};
+    } forEach _nearWeapons;
+    
+    // Si encontramos un AT, recogerlo
+    if (!isNull _foundAT && _foundATType != "") then {
+        [_unit, _foundAT, _foundATType] spawn BE_AI_PickupATWeapon;
+    };
+};
+
+// Recoger arma AT y añadir munición
+BE_AI_PickupATWeapon = {
+    params ["_unit", "_weaponHolder", "_weaponType"];
+    
+    // Marcar unidad como ocupada
+    _unit setVariable ["BE_AI_BusyWithAT", true];
+    
+    if (BE_AI_Debug) then {
+        systemChat format ["IA AT: %1 recogiendo %2", name _unit, _weaponType];
+    };
+    
+    // Moverse hacia el arma
+    private _wpPos = getPosATL _weaponHolder;
+    _unit doMove _wpPos;
+    
+    // Esperar a que llegue
+    private _timeout = time + 15;
+    waitUntil {
+        sleep 0.5; 
+        _unit distance _weaponHolder < 3 || 
+        time > _timeout || 
+        !alive _unit ||
+        isNull _weaponHolder
+    };
+    
+    // Si la unidad murió o el arma desapareció, abortar
+    if (!alive _unit || isNull _weaponHolder) exitWith {
+        if (alive _unit) then {
+            _unit setVariable ["BE_AI_BusyWithAT", false];
+        };
+    };
+    
+    // Recoger el arma
+    private _currentBackpack = backpack _unit;
+    private _needBackpack = _currentBackpack == "";
+    
+    // Si no tiene mochila, intentar añadir una
+    if (_needBackpack) then {
+        _unit addBackpack "B_AssaultPack_khk";
+        sleep 0.5;
+    };
+    
+    // Quitar arma secundaria actual si tiene
+    if (secondaryWeapon _unit != "") then {
+        _unit removeWeapon secondaryWeapon _unit;
+    };
+    
+    // Añadir el arma AT
+    private _success = false;
+    
+    // Método 1: Intentar directamente
+    _unit addWeapon _weaponType;
+    if (secondaryWeapon _unit == _weaponType) then {
+        _success = true;
+        
+        // Eliminar el arma del suelo
+        clearWeaponCargoGlobal _weaponHolder;
+    } else {
+        // Método 2: Usando take action
+        _unit action ["TakeWeapon", _weaponHolder, _weaponType];
+        sleep 1;
+        
+        if (secondaryWeapon _unit == _weaponType) then {
+            _success = true;
+        };
+    };
+    
+    // Si se recogió con éxito, añadir munición
+    if (_success) then {
+        // Obtener tipo de munición compatible
+        private _atMags = getArray (configFile >> "CfgWeapons" >> _weaponType >> "magazines");
+        
+        if (count _atMags > 0) then {
+            private _magType = _atMags select 0;
+            
+            // Añadir 2-3 proyectiles
+            for "_i" from 1 to (2 + floor(random 2)) do {
+                _unit addMagazine _magType;
+            };
+            
+            if (BE_AI_Debug) then {
+                systemChat format ["IA AT: %1 recibió munición para %2", name _unit, _weaponType];
+            };
+        };
+    };
+    
+    // Liberar unidad
+    _unit setVariable ["BE_AI_BusyWithAT", false];
+};
+
+// Añadir sistema de armas AT a la inicialización
+BE_AI_InitSystem = {
+    // [...código existente...]
+    
+    // Inicializar subsistemas
+    if (BE_AI_UseDirector) then {
+        call BE_AI_InitDirector;
+        BE_AI_AllSystems pushBack "Director";
+    };
+    
+    // [...resto de subsistemas...]
+    
+    // Añadir sistema de comportamiento AT
+    if (BE_AI_UseATWeaponSystem) then {
+        call BE_AI_InitATWeaponSystem;
+        BE_AI_AllSystems pushBack "AT Weapon System";
+    };
+};
+
+// ==================== INICIALIZACIÓN GLOBAL ====================
+if (!isNil "BE_AI_Initialized") exitWith {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI System: Ya inicializado"};
+};
+BE_AI_Initialized = false;
+BE_AI_Version = "1.1";
+
+// Variables globales
+BE_AI_AllSystems = [];
+BE_AI_TrackedUnits = [];
+BE_AI_ProxyGroups = [];
+BE_AI_PathCache = createHashMap;
+BE_AI_ShadowUnits = [];
+BE_AI_UnitLODLevels = createHashMap;
+BE_AI_CombatAlerts = [];
+
+// Contador de estadísticas
+BE_AI_Stats = createHashMap;
+BE_AI_Stats set ["ProxiesCreated", 0];
+BE_AI_Stats set ["PathCacheHits", 0];
+BE_AI_Stats set ["PathCacheMisses", 0];
+BE_AI_Stats set ["ShadowsCreated", 0];
+BE_AI_Stats set ["DirectorCycles", 0];
+
+// ==================== FUNCIONES DE UTILIDAD ====================
+// Función: Obtener distancia al jugador más cercano
+BE_AI_GetNearestPlayerDistance = {
+    params ["_position"];
+    private _minDist = 999999;
+    {
+        if (isPlayer _x) then {
+            private _dist = _position distance _x;
+            if (_dist < _minDist) then {_minDist = _dist};
+        };
+    } forEach allUnits;
+    _minDist
+};
+
+// Función: Registrar unidad para seguimiento
+BE_AI_RegisterUnit = {
+    params ["_unit"];
+    if (!alive _unit || isPlayer _unit) exitWith {};
+    if (_unit in BE_AI_TrackedUnits) exitWith {};
+    
+    // Guardar configuración original
+    _unit setVariable ["BE_AI_OriginalSkill", skill _unit];
+    _unit setVariable ["BE_AI_OriginalSide", side _unit];
+    
+    // Skills específicos
+    _unit setVariable ["BE_AI_OriginalAccuracy", _unit skill "aimingAccuracy"];
+    _unit setVariable ["BE_AI_OriginalSpeed", _unit skill "aimingSpeed"];
+    _unit setVariable ["BE_AI_OriginalShake", _unit skill "aimingShake"];
+    _unit setVariable ["BE_AI_OriginalSpotDist", _unit skill "spotDistance"];
+    _unit setVariable ["BE_AI_OriginalSpotTime", _unit skill "spotTime"];
+    
+    // Registrar
+    BE_AI_TrackedUnits pushBack _unit;
+    BE_AI_UnitLODLevels set [str _unit, 0];
+};
+
+// Función: Limpiar unidades muertas
+BE_AI_CleanupDeadUnits = {
+    // Limpiar unidades trackeadas
+    BE_AI_TrackedUnits = BE_AI_TrackedUnits select {alive _x};
+    
+    // Limpiar proxies
+    BE_AI_ProxyGroups = BE_AI_ProxyGroups select {
+        (_x select 1) params ["_group", "_leader", "_units"];
+        alive _leader && {count (_units select {alive _x}) > 0}
+    };
+    
+    // Limpiar sombras
+    BE_AI_ShadowUnits = BE_AI_ShadowUnits select {
+        (_x select 0) params ["_dummy", "_data"];
+        !isNull _dummy
+    };
+};
+
+// Función: Mostrar estadísticas
+BE_AI_ShowStats = {
+    if (!BE_AI_Debug) exitWith {};
+    private _statsText = "BE Advanced AI: ";
+    _statsText = _statsText + format ["Units: %1 | ", count BE_AI_TrackedUnits];
+    _statsText = _statsText + format ["Proxies: %1 | ", BE_AI_Stats getOrDefault ["ProxiesCreated", 0]];
+    _statsText = _statsText + format ["Shadows: %1 | ", BE_AI_Stats getOrDefault ["ShadowsCreated", 0]];
+    _statsText = _statsText + format ["Cache: %1/%2", 
+        BE_AI_Stats getOrDefault ["PathCacheHits", 0],
+        BE_AI_Stats getOrDefault ["PathCacheMisses", 0]
+    ];
+    systemChat _statsText;
+};
+
+// ==================== SISTEMA DIRECTOR DE IA ====================
+// Inicializar Director
+BE_AI_InitDirector = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema Director"};
+    // Bucle principal del director
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseDirector} do {
+            call BE_AI_DirectorCycle;
+            sleep BE_AI_DirectorInterval;
+        };
+    };
+};
+
+// Ciclo principal del Director
+BE_AI_DirectorCycle = {
+    // Verificar si hay unidades para gestionar
+    if (count BE_AI_TrackedUnits == 0) exitWith {};
+    
+    // Obtener todas las unidades AI no jugador
+    private _allAI = BE_AI_TrackedUnits;
+    
+    // Calcular puntuación de relevancia para cada unidad
+    private _scoredUnits = [];
+    {
+        private _unit = _x;
+        private _relevanceScore = 0;
+        
+        // 1. Distancia al jugador más cercano (inversa)
+        private _minPlayerDist = [getPosATL _unit] call BE_AI_GetNearestPlayerDistance;
+        _relevanceScore = _relevanceScore + (1000 / (_minPlayerDist max 1));
+        
+        // 2. En combate (bonus)
+        if (behaviour _unit == "COMBAT") then {_relevanceScore = _relevanceScore + 50};
+        
+        // 3. Líder de grupo (bonus)
+        if (_unit == leader group _unit) then {_relevanceScore = _relevanceScore + 20};
+        
+        // 4. Visible para jugadores (bonus enorme)
+        private _isVisible = false;
+        {
+            if (isPlayer _x) then {
+                if ([_x, "VIEW"] checkVisibility [eyePos _x, eyePos _unit] > 0.1) exitWith {_isVisible = true};
+            };
+        } forEach allUnits;
+        if (_isVisible) then {_relevanceScore = _relevanceScore + 200};
+        
+        // 5. Unidad especial (AT, MG, etc.)
+        private _unitType = typeOf _unit;
+        if (_unitType find "MG" > -1 || _unitType find "Sniper" > -1 || _unitType find "AT" > -1) then {
+            _relevanceScore = _relevanceScore + 30;
+        };
+        
+        // Añadir a la lista con su puntuación
+        _scoredUnits pushBack [_unit, _relevanceScore];
+    } forEach _allAI;
+    
+    // Ordenar por relevancia (mayor a menor)
+    _scoredUnits sort false;
+    
+    // Asignar niveles de AI basados en relevancia
+    for "_i" from 0 to (count _scoredUnits - 1) do {
+        private _data = _scoredUnits select _i;
+        _data params ["_unit", "_score"];
+        
+        if (_i < BE_AI_MaxFullAI) then {
+            // IA completa para unidades de alta relevancia
+            [_unit, "FULL"] call BE_AI_SetUnitLevel;
+        } else {
+            if (_i < (BE_AI_MaxFullAI + BE_AI_MaxMediumAI)) then {
+                // IA media para relevancia moderada
+                [_unit, "MEDIUM"] call BE_AI_SetUnitLevel;
+            } else {
+                // IA básica para el resto
+                [_unit, "BASIC"] call BE_AI_SetUnitLevel;
+            };
+        };
+    };
+    
+    // Actualizar estadísticas
+    BE_AI_Stats set ["DirectorCycles", (BE_AI_Stats getOrDefault ["DirectorCycles", 0]) + 1];
+};
+
+// Establecer nivel de IA para una unidad
+BE_AI_SetUnitLevel = {
+    params ["_unit", "_level"];
+    
+    // Ignorar si ya tiene este nivel
+    if (_unit getVariable ["BE_AI_Level", ""] == _level) exitWith {};
+    
+    // Aplicar configuración según nivel
+    switch (_level) do {
+        case "FULL": {
+            // IA completa - todos los sistemas activos
+            _unit enableAI "ALL";
+            _unit setSkill (_unit getVariable ["BE_AI_OriginalSkill", 0.7]);
+            
+            // Restaurar skills específicos
+            _unit setSkill ["aimingAccuracy", _unit getVariable ["BE_AI_OriginalAccuracy", 0.5]];
+            _unit setSkill ["aimingSpeed", _unit getVariable ["BE_AI_OriginalSpeed", 0.5]];
+            _unit setSkill ["aimingShake", _unit getVariable ["BE_AI_OriginalShake", 0.5]];
+            _unit setSkill ["spotDistance", _unit getVariable ["BE_AI_OriginalSpotDist", 0.7]];
+            _unit setSkill ["spotTime", _unit getVariable ["BE_AI_OriginalSpotTime", 0.5]];
+            
+            BE_AI_UnitLODLevels set [str _unit, 0];
+        };
+        case "MEDIUM": {
+            // IA media - algunos sistemas desactivados o optimizados
+            _unit enableAI "TARGET";
+            _unit enableAI "AUTOTARGET";
+            _unit enableAI "MOVE";
+            _unit enableAI "ANIM";
+            _unit enableAI "PATH";
+            
+            // Reducir skills que consumen más CPU
+            _unit setSkill ["spotDistance", (_unit getVariable ["BE_AI_OriginalSpotDist", 0.7]) * 0.7];
+            _unit setSkill ["spotTime", (_unit getVariable ["BE_AI_OriginalSpotTime", 0.5]) * 0.6];
+            _unit setSkill ["aimingAccuracy", (_unit getVariable ["BE_AI_OriginalAccuracy", 0.5]) * 0.7];
+            
+            BE_AI_UnitLODLevels set [str _unit, 1];
+        };
+        case "BASIC": {
+            // IA básica - mínimo necesario para funcionar
+            _unit disableAI "FSM";
+            _unit disableAI "TARGET";
+            _unit disableAI "AUTOTARGET";
+            _unit enableAI "MOVE";
+            _unit enableAI "ANIM";
+            
+            // Skills mínimas
+            _unit setSkill ["spotDistance", (_unit getVariable ["BE_AI_OriginalSpotDist", 0.7]) * 0.3];
+            _unit setSkill ["spotTime", (_unit getVariable ["BE_AI_OriginalSpotTime", 0.5]) * 0.3];
+            _unit setSkill ["aimingAccuracy", (_unit getVariable ["BE_AI_OriginalAccuracy", 0.5]) * 0.3];
+            
+            BE_AI_UnitLODLevels set [str _unit, 2];
+        };
+    };
+    
+    // Guardar nivel actual
+    _unit setVariable ["BE_AI_Level", _level];
+};
+
+// ==================== SISTEMA DE PROXIES ====================
+// Inicializar sistema de proxies
+BE_AI_InitProxies = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema de Proxies"};
+    
+    // Bucle principal de detección de grupos para proxies
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseProxies} do {
+            call BE_AI_CheckGroupsForProxy;
+            sleep 5;
+        };
+    };
+};
+
+// Verificar grupos para convertir a proxies
+BE_AI_CheckGroupsForProxy = {
+    // Obtener todos los grupos AI
+    private _allGroups = allGroups select {
+        !isNull _x && 
+        {count units _x > 0} && 
+        {!isPlayer leader _x} &&
+        {!(_x getVariable ["BE_AI_IsProxy", false])} &&
+        {!(_x getVariable ["BE_AI_NoProxy", false])}
+    };
+    
+    {
+        private _group = _x;
+        private _leader = leader _group;
+        private _units = units _group;
+        
+        // Verificar distancia al jugador más cercano
+        private _playerDist = [getPosATL _leader] call BE_AI_GetNearestPlayerDistance;
+        
+        // Solo aplicar a grupos distantes y lo suficientemente grandes
+        if (_playerDist > BE_AI_ProxyMinDistance && {count _units >= 3}) then {
+            // Verificar si el grupo ya es un proxy
+            if (!(_group getVariable ["BE_AI_IsProxy", false])) then {
+                // Convertir a proxy
+                [_group] call BE_AI_ConvertToProxy;
+            };
+        };
+    } forEach _allGroups;
+};
+
+// Convertir grupo a representación proxy
+BE_AI_ConvertToProxy = {
+    params ["_group"];
+    
+    private _leader = leader _group;
+    private _units = units _group;
+    private _position = getPosATL _leader;
+    private _side = side _group;
+    
+    // Información básica para reconstrucción
+    private _unitTypes = _units apply {typeOf _x};
+    private _unitPositions = _units apply {getPosATL _x};
+    private _unitDirections = _units apply {getDir _x};
+    
+    // Guardar waypoints
+    private _waypoints = waypoints _group apply {
+        [waypointPosition _x, waypointType _x, waypointBehaviour _x, waypointCombatMode _x]
+    };
+    
+    // Almacenar datos de combate
+    private _inCombat = behaviour _leader == "COMBAT";
+    private _knownEnemies = [];
+    
+    if (_inCombat) then {
+        private _enemy = _leader findNearestEnemy _leader;
+        if (!isNull _enemy) then {_knownEnemies = [getPosATL _enemy]};
+    };
+    
+    // Crear datos de proxy
+    private _proxyData = [
+        _position,          // Posición central
+        _unitTypes,         // Tipos de unidades
+        _unitPositions,     // Posiciones originales
+        _unitDirections,    // Direcciones originales
+        _waypoints,         // Waypoints
+        _side,              // Bando
+        _inCombat,          // En combate
+        _knownEnemies,      // Enemigos conocidos
+        time                // Tiempo de creación
+    ];
+    
+    // Crear unidad dummy
+    private _dummyGroup = createGroup [_side, true];
+    private _dummy = _dummyGroup createUnit [_unitTypes select 0, _position, [], 0, "NONE"];
+    
+    // Configurar unidad dummy como representante visual
+    _dummy allowDamage false;
+    _dummy disableAI "ALL";
+    _dummy setBehaviour (behaviour _leader);
+    
+    // Crear estructura de proxy
+    private _proxy = [
+        _dummyGroup,        // Grupo dummy
+        _dummy,             // Unidad representante
+        _proxyData,         // Datos originales
+        time,               // Tiempo de última actualización
+        false               // Bandera de conversión pendiente
+    ];
+    
+    // Registrar proxy
+    BE_AI_ProxyGroups pushBack [_group, _proxy];
+    
+    // Marcar el grupo como proxy
+    _group setVariable ["BE_AI_IsProxy", true];
+    
+    // Eliminar unidades originales
+    {deleteVehicle _x} forEach _units;
+    
+    // Eliminar grupo original
+    deleteGroup _group;
+    
+    // Iniciar bucle de comportamiento
+    [_proxy] spawn BE_AI_UpdateProxyBehavior;
+    
+    // Actualizar estadísticas
+    BE_AI_Stats set ["ProxiesCreated", (BE_AI_Stats getOrDefault ["ProxiesCreated", 0]) + 1];
+    
+    if (BE_AI_Debug) then {
+        systemChat format ["BE Advanced AI: Grupo convertido a proxy - %1 unidades", count _unitTypes];
+    };
+};
+
+// Actualizar comportamiento de proxy
+BE_AI_UpdateProxyBehavior = {
+    params ["_proxy"];
+    
+    _proxy params ["_dummyGroup", "_dummy", "_proxyData", "_lastUpdate", "_pendingConversion"];
+    
+    // Bucle de comportamiento mientras el proxy exista
+    while {alive _dummy && BE_AI_SystemActive && BE_AI_UseProxies} do {
+        // Verificar si debe reconvertirse a grupo real
+        private _playerDist = [getPosATL _dummy] call BE_AI_GetNearestPlayerDistance;
+        
+        if (_playerDist < BE_AI_ProxyMinDistance * 0.8) then {
+            // Marcar para conversión
+            _proxy set [4, true];
+            [_proxy] spawn BE_AI_ConvertFromProxy;
+            break;
+        };
+        
+        // Comportamiento simple según estado
+        private _inCombat = _proxyData select 6;
+        private _knownEnemies = _proxyData select 7;
+        
+        if (_inCombat && count _knownEnemies > 0) then {
+            // Simular combate
+            if (random 1 > 0.7) then {
+                private _enemyPos = _knownEnemies select 0;
+                private _dir = [getPosATL _dummy, _enemyPos] call BIS_fnc_dirTo;
+                _dummy setDir _dir;
+                
+                // Efectos de combate ocasionales
+                if (random 1 > 0.8) then {
+                    private _tracerPos = getPosATL _dummy;
+                    private _tracer = "F_20mm_Red" createVehicle _tracerPos;
+                    _tracer setVelocity [sin(_dir) * 200, cos(_dir) * 200, 5 + random 10];
+                };
+            };
+        } else {
+            // Movimiento de patrulla
+            private _waypoints = _proxyData select 4;
+            if (count _waypoints > 0 && random 1 > 0.9) then {
+                private _wp = selectRandom _waypoints;
+                private _wPos = _wp select 0;
+                
+                // Mover dummy hacia waypoint
+                _dummy setPosATL [
+                    getPosATL _dummy select 0 + ((_wPos select 0) - (getPosATL _dummy select 0)) * 0.1,
+                    getPosATL _dummy select 1 + ((_wPos select 1) - (getPosATL _dummy select 1)) * 0.1,
+                    getPosATL _dummy select 2
+                ];
+                
+                // Actualizar dirección
+                _dummy setDir ([getPosATL _dummy, _wPos] call BIS_fnc_dirTo);
+            };
+        };
+        
+        sleep BE_AI_ProxyUpdateInterval;
+    };
+    
+    // Si el bucle termina y no se está convirtiendo, limpiar
+    if (!(_proxy select 4)) then {
+        deleteVehicle _dummy;
+        deleteGroup _dummyGroup;
+    };
+};
+
+// Convertir de proxy a grupo real
+BE_AI_ConvertFromProxy = {
+    params ["_proxy"];
+    
+    _proxy params ["_dummyGroup", "_dummy", "_proxyData", "_lastUpdate", "_pendingConversion"];
+    
+    if (_pendingConversion) then {
+        _proxyData params [
+            "_position", "_unitTypes", "_unitPositions", "_unitDirections", 
+            "_waypoints", "_side", "_inCombat", "_knownEnemies", "_createTime"
+        ];
+        
+        // Crear nuevo grupo
+        private _newGroup = createGroup [_side, true];
+        
+        // Crear unidades
+        private _newUnits = [];
+        for "_i" from 0 to ((count _unitTypes) - 1) do {
+            private _pos = _unitPositions select _i;
+            private _dir = _unitDirections select _i;
+            private _type = _unitTypes select _i;
+            
+            // Ajustar posición a la actual del proxy
+            private _deltaPos = [
+                (_pos select 0) - (_position select 0),
+                (_pos select 1) - (_position select 1),
+                (_pos select 2) - (_position select 2)
+            ];
+            
+            private _newPos = [
+                (getPosATL _dummy select 0) + (_deltaPos select 0),
+                (getPosATL _dummy select 1) + (_deltaPos select 1),
+                (getPosATL _dummy select 2) + (_deltaPos select 2)
+            ];
+            
+            private _unit = _newGroup createUnit [_type, _newPos, [], 0, "NONE"];
+            _unit setDir _dir;
+            
+            // Registrar para gestión avanzada
+            [_unit] call BE_AI_RegisterUnit;
+            
+            _newUnits pushBack _unit;
+        };
+        
+        // Restaurar waypoints
+        {
+            _x params ["_wpPos", "_wpType", "_wpBehaviour", "_wpCombatMode"];
+            private _wp = _newGroup addWaypoint [_wpPos, 0];
+            _wp setWaypointType _wpType;
+            _wp setWaypointBehaviour _wpBehaviour;
+            _wp setWaypointCombatMode _wpCombatMode;
+        } forEach _waypoints;
+        
+        // Configurar estado de combate
+        if (_inCombat) then {
+            _newGroup setBehaviour "COMBAT";
+            _newGroup setCombatMode "RED";
+            
+            if (count _knownEnemies > 0) then {
+                (_newUnits select 0) doWatch (_knownEnemies select 0);
+            };
+        };
+        
+        // Eliminar proxy
+        deleteVehicle _dummy;
+        deleteGroup _dummyGroup;
+        
+        // Quitar de la lista de proxies
+        BE_AI_ProxyGroups = BE_AI_ProxyGroups select {(_x select 1) select 1 != _dummy};
+        
+        if (BE_AI_Debug) then {
+            systemChat format ["BE Advanced AI: Proxy convertido a grupo real - %1 unidades", count _newUnits];
+        };
+    };
+};
+
+// ==================== SISTEMA SHADOW AI ====================
+// Inicializar sistema Shadow AI
+BE_AI_InitShadowAI = {
+    if (BE_AI_Debug) then {systemChat "BE Advanced AI: Iniciando Sistema Shadow AI"};
+    
+    // Bucle principal para gestionar sombras
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseShadowAI} do {
+            call BE_AI_CheckUnitsForShadow;
+            sleep 5;
+        };
+    };
+    
+    // Bucle de actualización
+    [] spawn {
+        while {BE_AI_SystemActive && BE_AI_UseShadowAI} do {
+            call BE_AI_UpdateShadowUnits;
+            sleep BE_AI_ShadowUpdateInterval;
+        };
+    };
+};
+
+// Verificar unidades para conversión a shadow
+BE_AI_CheckUnitsForShadow = {
+    // Solo aplicar a unidades muy lejanas y en baja relevancia
+    {
+        private _unit = _x;
+        private _playerDist = [getPosATL _unit] call BE_AI_GetNearestPlayerDistance;
+        private _level = BE_AI_UnitLODLevels getOrDefault [str _unit, 0];
+        
+        if (_playerDist > BE_AI_ShadowMinDistance && _level >= 2 && !(_unit getVariable ["BE_AI_IsShadow", false])) then {
+            // Convertir a shadow si es unidad de baja relevancia y muy lejana
+            [_unit] call BE_AI_ConvertToShadow;
+        };
+    } forEach BE_AI_TrackedUnits;
+};
+
+// Convertir unidad a shadow
+BE_AI_ConvertToShadow = {
+    params ["_unit"];
+    
+    if (!alive _unit) exitWith {};
+    
+    // Crear datos de shadow
+    private _position = getPosATL _unit;
+    private _direction = getDir _unit;
+    private _type = typeOf _unit;
+    private _side = side _unit;
+    private _group = group _unit;
+    private _behaviour = behaviour _unit;
+    private _combatMode = combatMode _unit;
+    private _unitPos = unitPos _unit;
+    
+    // Crear objeto shadow (marker o similar)
+    private _dummy = "Land_HelipadEmpty_F" createVehicle _position;
+    
+    // Guardar datos de shadow
+    private _shadowData = [
+        _position,      // Posición
+        _direction,     // Dirección
+        _type,          // Tipo de unidad
+        _side,          // Bando
+        _group,         // Grupo original
+        _behaviour,     // Comportamiento
+        _combatMode,    // Modo de combate
+        _unitPos,       // Postura
+        time            // Tiempo de creación
+    ];
+    
+    // Registrar shadow
+    BE_AI_ShadowUnits pushBack [_dummy, _shadowData, _unit];
+    
+    // Marcar unidad
+    _unit setVariable ["BE_AI_IsShadow", true];
+    
+    // Desactivar completamente
+    _unit enableSimulation false;
+    _unit hideObject true;
+    
+    // Actualizar estadísticas
+    BE_AI_Stats set ["ShadowsCreated", (BE_AI_Stats getOrDefault ["ShadowsCreated", 0]) + 1];
+    
+    if (BE_AI_Debug) then {
+        systemChat format ["BE Advanced AI: Unidad convertida a shadow - %1", _type];
+    };
+};
+
+// Actualizar todas las unidades shadow
+BE_AI_UpdateShadowUnits = {
+    {
+        _x params ["_dummy", "_shadowData", "_unit"];
+        
+        if (isNull _dummy || !alive _unit) then {
+            continue;
+        };
+        
+        // Verificar si debe reactivarse
+        private _playerDist = [getPosATL _dummy] call BE_AI_GetNearestPlayerDistance;
+        
+        if (_playerDist < BE_AI_ShadowMinDistance * 0.8) then {
+            // Reactivar unidad real
+            [_x] call BE_AI_ConvertFromShadow;
+        } else {
+            // Actualización ligera de comportamiento
+            _shadowData params ["_position", "_direction", "_type", "_side", "_group", 
+                "_behaviour", "_combatMode", "_unitPos", "_createTime"];
+            
+            // Solo hacer movimientos ocasionales para aparentar actividad
+            if (random 1 > 0.7) then {
+                // Pequeño movimiento aleatorio
+                private _newPos = [
+                    (_position select 0) + (random 10 - 5),
+                    (_position select 1) + (random 10 - 5),
+                    _position select 2
+                ];
+                
+                // Actualizar posición
+                _dummy setPosATL _newPos;
+                _shadowData set [0, _newPos];
+                _unit setPosATL _newPos;
+                
+                // Actualizar dirección ocasionalmente
+                if (random 1 > 0.5) then {
+                    private _newDir = (_direction + (random 40) - 20) % 360;
+                    _shadowData set [1, _newDir];
+                };
+            };
+        };
+    } forEach BE_AI_ShadowUnits;
+    
+    // Limpiar lista
+    BE_AI_ShadowUnits = BE_AI_ShadowUnits select {!isNull (_x select 0) && alive (_x select 2)};
+};
+
+// Convertir de shadow a unidad normal
+BE_AI_ConvertFromShadow = {
+    params ["_shadowInfo"];
+    
+    _shadowInfo params ["_dummy", "_shadowData", "_unit"];
+    
+    if (!alive _unit) exitWith {};
+    
+    // Restaurar posición y estado
+    _shadowData params ["_position", "_direction", "_type", "_side", "_group", 
+        "_behaviour", "_combatMode", "_unitPos", "_createTime"];
+    
+    // Reactivar unidad
+    _unit enableSimulation true;
+    _unit hideObject false;
+    
+    // Actualizar posición y dirección
+    _unit setPosATL _position;
+    _unit setDir _direction;
+    
+    // Restaurar comportamiento
+    _unit setBehaviour _behaviour;
+    _unit setCombatMode _combatMode;
+    _unit setUnitPos _unitPos;
+    
+    // Desmarcar
+    _unit setVariable ["BE_AI_IsShadow", false];
+    
+    // Eliminar dummy
+    deleteVehicle _dummy;
+    
+    // Quitar de la lista
+    BE_AI_ShadowUnits = BE_AI_ShadowUnits - [_shadowInfo];
+    
+    if (BE_AI_Debug) then {
+        systemChat format ["BE Advanced AI: Shadow convertido a unidad normal - %1", _type];
+    };
+};
