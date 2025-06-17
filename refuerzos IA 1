@@ -1,0 +1,1064 @@
+// Configuración MEJORADA
+AIR_debug = true;               // Activa mensajes de debug
+AIR_reinforceChance = 100;      // 100% probabilidad de éxito para pruebas
+AIR_lossThreshold = 0.50;       // Requiere perder 50% para pedir refuerzos (quedan 50%)
+AIR_cooldownTime = 0.1;          // Tiempo entre solicitudes reducido a 20 segundos
+AIR_respawnDistance = 100;      // Distancia a la que aparecen los refuerzos
+AIR_reinforcementSize = 3;      // Número de unidades de refuerzo
+
+// Variables globales
+AIR_reinforcementGroups = [];
+if (isNil "AIR_factionCooldowns") then { 
+    AIR_factionCooldowns = createHashMap; 
+    AIR_factionCooldownTime = 1200; // 20 minutos en segundos
+    AIR_systemStartTime = time; // Añadir tiempo de inicio del sistema
+};
+// Función para mensaje de debug
+AIR_debugMessage = {
+    params ["_message"];
+    if (!AIR_debug) exitWith {};
+    
+    systemChat format ["[AI REFUERZO] %1", _message];
+    diag_log format ["[AI REFUERZO] %1", _message];
+};
+
+// Nueva función para verificar cooldown de facción
+AIR_checkFactionCooldown = {
+    params ["_faction"];
+    
+    private _lastReinforcement = AIR_factionCooldowns getOrDefault [_faction, AIR_systemStartTime];
+    private _timeSinceLastReinforcement = time - _lastReinforcement;
+    
+    if (_lastReinforcement > AIR_systemStartTime && _timeSinceLastReinforcement < AIR_factionCooldownTime) then {
+        ["La facción " + _faction + " debe esperar " + str(round((_lastReinforcement + AIR_factionCooldownTime - time)/60)) + " minutos más para pedir refuerzos"] call AIR_debugMessage;
+        false
+    } else {
+        true
+    };
+};
+
+// Función para obtener el bando de una facción (REEMPLAZO DE BIS_fnc_factionSide)
+BE_GetFactionSide = {
+    params ["_faction"];
+    private _side = civilian;
+    
+    // Buscar en CfgFactionClasses
+    private _cfgFaction = configFile >> "CfgFactionClasses" >> _faction;
+    if (isClass _cfgFaction) then {
+        private _sideNum = getNumber (_cfgFaction >> "side");
+        switch (_sideNum) do {
+            case 0: { _side = east };
+            case 1: { _side = west };
+            case 2: { _side = independent };
+            default { _side = civilian };
+        };
+    } else {
+        // Buscar en unidades de la facción
+        private _sampleUnit = "";
+        private _allUnits = [_faction, "man"] call BE_ListFactionUnits;
+        if (count _allUnits > 0) then {
+            _sampleUnit = _allUnits select 0;
+        };
+        
+        if (_sampleUnit != "") then {
+            private _cfgUnit = configFile >> "CfgVehicles" >> _sampleUnit;
+            if (isClass _cfgUnit) then {
+                private _sideNum = getNumber (_cfgUnit >> "side");
+                switch (_sideNum) do {
+                    case 0: { _side = east };
+                    case 1: { _side = west };
+                    case 2: { _side = independent };
+                    default { _side = civilian };
+                };
+            };
+        };
+    };
+    
+    _side
+};
+
+// Registrar fuerza inicial de todos los grupos existentes
+AIR_registerExistingGroups = {
+    {
+        private _group = _x;
+        private _leader = leader _group;
+        
+        // Solo procesar grupos de IA con al menos 4 unidades
+        if (!isPlayer _leader && side _group in [west, east, independent] && count units _group >= 4) then {
+            if (isNil {_group getVariable "AIR_initialStrength"}) then {
+                private _strength = count units _group;
+                _group setVariable ["AIR_initialStrength", _strength];
+                _group setVariable ["AIR_lastReinforcement", 0];
+                
+                AIR_reinforcementGroups pushBack _group;
+                
+                ["Grupo registrado: " + str(_group) + " con " + str(_strength) + " unidades"] call AIR_debugMessage;
+            };
+        };
+    } forEach allGroups;
+};
+
+// Comprobar si un grupo necesita refuerzos
+AIR_checkGroupForReinforcement = {
+    params ["_group"];
+    
+    // Verificar que el grupo existe y tiene líder vivo
+    if (isNull _group || !alive leader _group) exitWith {false};
+    
+    // Obtener datos del grupo
+    private _initialStrength = _group getVariable ["AIR_initialStrength", 0];
+    private _currentStrength = count units _group;
+    private _lastReinforcement = _group getVariable ["AIR_lastReinforcement", 0];
+    
+    // Debug info
+    ["Comprobando grupo: " + str(_group) + " - Fuerza: " + str(_currentStrength) + "/" + str(_initialStrength)] call AIR_debugMessage;
+    
+    // Comprobar condiciones para refuerzo
+    if (_initialStrength > 0 && 
+        _currentStrength <= (_initialStrength * (1 - AIR_lossThreshold)) && 
+        time - _lastReinforcement > AIR_cooldownTime) exitWith {
+        
+        ["¡Grupo " + str(_group) + " necesita refuerzos! (" + str(_currentStrength) + "/" + str(_initialStrength) + ")"] call AIR_debugMessage;
+        true
+    };
+    
+    false
+};
+
+// ============================================
+// NUEVA FUNCIÓN: DETECTAR VEHÍCULOS ANTIAÉREOS
+// ============================================
+BE_IsAAVehicle = {
+    params ["_vehClass"];
+    private _isAA = false;
+    private _weapons = getArray (configFile >> "CfgVehicles" >> _vehClass >> "weapons");
+    
+    // Buscar armas AA en configuración
+    {
+        if (_x find "AA" != -1 || _x find "SAM" != -1 || _x find "ZSU" != -1) then {
+            _isAA = true;
+        };
+    } forEach _weapons;
+    
+    // Buscar en nombre de clase
+    private _className = toLower _vehClass;
+    if (_className find "aa" != -1 || _className find "zsu" != -1 || _className find "sam" != -1) then {
+        _isAA = true;
+    };
+    
+    _isAA
+};
+
+// ============================================
+// SISTEMA DE REFUERZOS TÁCTICOS - VERSIÓN IA
+// ============================================
+if (isNil "BE_ReinforcementsActive") then { BE_ReinforcementsActive = true; };
+if (isNil "BE_AIReinforcementsRequested") then { BE_AIReinforcementsRequested = createHashMap; };
+if (isNil "BE_AIRejectedRequests") then { BE_AIRejectedRequests = createHashMap; };
+if (isNil "BE_Debug") then { BE_Debug = true; };
+
+// NUEVO: Función para enviar mensaje de aviso sobre refuerzos enemigos
+BE_NotifyEnemyReinforcements = {
+    params ["_side"];
+    
+    // Solo enviar notificaciones a bandos enemigos del que recibe refuerzos
+    if (side player getFriend _side < 0.6) then {
+        private _messageID = floor(random 10) + 1;
+        private _stringName = format ["STR_BE_ENEMY_REINFORCEMENTS_%1", _messageID];
+        private _message = localize _stringName;
+        
+        // Fallback en caso de que no exista la traducción
+        if (_message == _stringName) then {
+            _message = "BASE: Se han detectado refuerzos enemigos en el área.";
+        };
+        
+        // Enviamos mensaje estilo radio a la esquina inferior izquierda
+        ["BASE", _message] call BIS_fnc_showSubtitle;
+        
+        // Alternativa: Mensaje en el sistema de radio de ARMA
+        [playerSide, "HQ"] sideChat _message;
+    };
+};
+
+// MEJORADO: Soporte para vehículos técnicos
+BE_IsTechnical = {
+    params ["_vehClass"];
+    
+    // Definir patrones comunes de técnicos
+    private _isOffroad = _vehClass find "Offroad" != -1;
+    private _isVan = _vehClass find "Van" != -1;
+    private _isPickup = _vehClass find "Pickup" != -1;
+    private _isTechnical = _vehClass find "Technical" != -1;
+    
+    // Verificar si tiene armamento montado
+    private _hasWeapon = false;
+    private _weapons = getArray (configFile >> "CfgVehicles" >> _vehClass >> "weapons");
+    
+    {
+        if (_x != "" && _x != "CarHorn" && _x != "TruckHorn") then {
+            _hasWeapon = true;
+        };
+    } forEach _weapons;
+    
+    // Excluir vehículos antiaéreos
+    private _isAA = [_vehClass] call BE_IsAAVehicle;
+    if (_isAA) exitWith { false };
+    
+    // Considerar cualquier vehículo civil con armamento como técnico
+    ((_isOffroad || _isVan || _isPickup || _isTechnical) && _hasWeapon) ||
+    (getText (configFile >> "CfgVehicles" >> _vehClass >> "faction") in ["BLU_G_F", "OPF_G_F", "IND_G_F"] && _hasWeapon)
+};
+
+BE_ListFactionUnits = {
+    params ["_faction", "_type"];
+    
+    private _result = [];
+    private _cfgVehicles = configFile >> "CfgVehicles";
+    
+    for "_i" from 0 to (count _cfgVehicles - 1) do {
+        private _entry = _cfgVehicles select _i;
+        
+        if (isClass _entry) then {
+            private _entryFaction = getText (_entry >> "faction");
+            private _scope = getNumber (_entry >> "scope");
+            private _className = configName _entry;
+            
+            if (_scope == 2 && _entryFaction == _faction) then {
+                if (_type == "all" || (_type == "man" && _className isKindOf "CAManBase") || 
+                    (_type == "car" && _className isKindOf "Car") || 
+                    (_type == "tank" && _className isKindOf "Tank") || 
+                    (_type == "heli" && _className isKindOf "Helicopter")) then {
+                    _result pushBack _className;
+                };
+            };
+        };
+        
+        if (_i % 100 == 0) then { sleep 0.01 };
+    };
+    
+    _result
+};
+
+BE_GetArmedCombatUnits = {
+    params ["_faction"];
+    
+    private _allUnits = [_faction, "man"] call BE_ListFactionUnits;
+    private _combatUnits = [];
+    
+    {
+        private _className = _x;
+        private _weapons = getArray (configFile >> "CfgVehicles" >> _className >> "weapons");
+        private _role = getText (configFile >> "CfgVehicles" >> _className >> "role");
+        
+        if (count _weapons > 1 && {!(_role in ["Crewman", "Pilot"])}) then {
+            _combatUnits pushBack _className;
+        };
+    } forEach _allUnits;
+    
+    if (count _combatUnits > 0) then {
+        _combatUnits
+    } else {
+        _allUnits
+    }
+};
+
+// MEJORADO: Selección de vehículos para facciones personalizadas
+BE_GetTransportVehicle = {
+    params ["_faction", "_isAir"];
+    
+    private _vehicleType = if (_isAir) then {"heli"} else {"car"};
+    private _vehicles = [_faction, _vehicleType] call BE_ListFactionUnits;
+    private _transportVehicles = [];
+    private _civilianTrucks = ["C_Truck_02_transport_F", "C_Truck_02_covered_F"];
+    
+    // Lista expandida de términos a excluir
+    private _excludeTerms = [
+        "fuel", "combustible", "refuel",
+        "ammo", "munición", "ammunition", "munitions",
+        "repair", "reparación", "maintenance",
+        "medical", "médico", "ambulance", "ambulancia",
+        "container", "contenedor",
+        "supply", "suministro", "supplies",
+        "cargo container", "cargo truck",
+        "box", "caja",
+        "workshop", "taller",
+        "maintenance", "mantenimiento",
+        "recovery", "recuperación",
+        "uav", "drone", "ugv",
+        "empty", "vacío",
+        "trailer", "remolque",
+        "flatbed", "platform",
+        "device", "crane",
+        "logistics", "logística",
+        "transport cargo", "cargo transport",
+        "ammunition truck", "ammo truck"
+    ];
+    
+    {
+        private _vehClass = _x;
+        private _config = configFile >> "CfgVehicles" >> _vehClass;
+        
+        if (getNumber (_config >> "transportSoldier") > 0) then {
+            private _displayName = getText (_config >> "displayName");
+            private _shouldExclude = false;
+            
+            {
+                if (toLower _displayName find toLower _x > -1) exitWith {
+                    _shouldExclude = true;
+                };
+            } forEach _excludeTerms;
+            
+            if (!_shouldExclude) then {
+                _transportVehicles pushBack _vehClass;
+            };
+        };
+    } forEach _vehicles;
+    
+    if (count _transportVehicles > 0) then {
+        selectRandom _transportVehicles
+    } else {
+        if (!_isAir) then {
+            selectRandom _civilianTrucks
+        } else {
+            ""
+        }
+    };
+};
+
+BE_GetWeaponConfig = {
+    params ["_veh", "_turretPath"];
+    
+    private _config = configFile >> "CfgVehicles" >> typeOf _veh;
+    
+    if (count _turretPath > 0) then {
+        {
+            _config = _config >> "Turrets" >> (str _x);
+            if (isNull _config) exitWith {};
+        } forEach _turretPath;
+    };
+    
+    _config
+};
+
+BE_fnc_shouldStayInVehicle = {
+    params ["_unit", "_vehicle"];
+    
+    private _shouldStay = false;
+    
+    // Si es conductor/piloto
+    if (_unit == driver _vehicle) then {
+        _shouldStay = true;
+    } else {
+        private _role = assignedVehicleRole _unit;
+        if (count _role > 0) then {
+            // Si está en una posición con arma
+            if (_role select 0 == "Turret") then {
+                private _turretPath = _role select 1;
+                private _config = [_vehicle, _turretPath] call BE_GetWeaponConfig;
+                if (!isNull _config) then {
+                    // Verificar si hay algún arma en esta posición
+                    private _weapons = _vehicle weaponsTurret _turretPath;
+                    if (count _weapons > 0) then {
+                        _shouldStay = true;
+                    };
+                };
+            };
+            
+            // Si está en una posición FFV con arma
+            if (_role select 0 == "Cargo" && {count _role > 1}) then {
+                private _cargoIndex = _role select 1;
+                if (!isNil "_cargoIndex") then {
+                    private _ffvPath = [_vehicle, _cargoIndex] call {
+                        params ["_veh", "_cargoIndex"];
+                        private _turrets = allTurrets [_veh, true];
+                        private _ffvTurrets = _turrets select {
+                            private _config = [_veh, _x] call BE_GetWeaponConfig;
+                            !isNull _config && {getNumber (_config >> "isFFV") == 1}
+                        };
+                        
+                        private _ffvCount = count _ffvTurrets;
+                        if (typeName _cargoIndex == "SCALAR" && {_cargoIndex >= 0} && {_cargoIndex < _ffvCount}) then {
+                            _ffvTurrets select _cargoIndex
+                        } else {
+                            []
+                        };
+                    };
+                    
+                    if (count _ffvPath > 0) then {
+                        private _weapons = _vehicle weaponsTurret _ffvPath;
+                        if (count _weapons > 0) then {
+                            _shouldStay = true;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    
+    _shouldStay
+};
+
+BE_fnc_isFromFaction = {
+    params [["_className", "", [""]], ["_faction", "", [""]]];
+    private _vehicleConfig = configFile >> "CfgVehicles" >> _className;
+    if (!isClass _vehicleConfig) exitWith { false };
+    
+    private _vehicleFaction = getText (_vehicleConfig >> "faction");
+    private _vehicleSide = getNumber (_vehicleConfig >> "side");
+    private _unitFactionConfig = configFile >> "CfgFactionClasses" >> _faction;
+    private _unitSide = getNumber (_unitFactionConfig >> "side");
+    
+    // Primero intentar coincidencia exacta de facción
+    if (_vehicleFaction == _faction) exitWith { true };
+    
+    // Si no coincide la facción, verificar al menos que sean del mismo bando
+    if (_vehicleSide == _unitSide) exitWith { true };
+    
+    false
+};
+
+// MEJORADO: Detección de vehículos blindados ligeros (incluye técnicos)
+BE_GetBasicArmoredVehicle = {
+    params ["_faction"];
+    
+    private _vehicles = [_faction, "car"] call BE_ListFactionUnits;
+    private _armoredVehicles = [];
+    
+    {
+        private _className = _x;
+        
+        // Excluir vehículos antiaéreos
+        private _isAA = [_className] call BE_IsAAVehicle;
+        if (_isAA) then { continue };
+        
+        private _armor = getNumber (configFile >> "CfgVehicles" >> _className >> "armor");
+        private _isTechnical = [_className] call BE_IsTechnical;
+        
+        if ((_armor > 20 && _className isKindOf "Car") || _isTechnical) then {
+            _armoredVehicles pushBack _className;
+        };
+    } forEach _vehicles;
+    
+    if (count _armoredVehicles > 0) then {
+        selectRandom _armoredVehicles
+    } else {
+        ""
+    };
+};
+
+BE_GetArmoredVehicle = {
+    params ["_faction"];
+    
+    private _vehicles = ([_faction, "car"] call BE_ListFactionUnits) + ([_faction, "tank"] call BE_ListFactionUnits);
+    private _armoredVehicles = [];
+    
+    {
+        private _className = _x;
+        
+        // Excluir vehículos antiaéreos
+        private _isAA = [_className] call BE_IsAAVehicle;
+        if (_isAA) then { continue };
+        
+        private _config = configFile >> "CfgVehicles" >> _className;
+        private _vehFaction = getText (_config >> "faction");
+        
+        // Verificación estricta de facción
+        if (_vehFaction == _faction) then {
+            private _weapons = count (getArray (_config >> "weapons"));
+            private _armor = getNumber (_config >> "armor");
+            private _isTechnical = [_className] call BE_IsTechnical;
+            
+            // Incluir vehículos AA si pertenecen a la facción
+            if ((_weapons > 2 && _armor > 40) || _isTechnical) then {
+                _armoredVehicles pushBack _className;
+            };
+        };
+    } forEach _vehicles;
+    
+    if (count _armoredVehicles > 0) then {
+        selectRandom _armoredVehicles
+    } else {
+        // Solo usar alternativa si no hay NINGÚN vehículo
+        private _side = [_faction] call BE_GetFactionSide;
+        private _alternativeVehicle = "";
+        switch (_side) do {
+            case west: { _alternativeVehicle = "B_APC_Wheeled_01_cannon_F"; };
+            case east: { _alternativeVehicle = "O_APC_Wheeled_02_rcws_F"; };
+            case independent: { _alternativeVehicle = "I_APC_Wheeled_03_cannon_F"; };
+            default { _alternativeVehicle = "B_APC_Wheeled_01_cannon_F"; };
+        };
+        _alternativeVehicle
+    }
+};
+
+BE_GetTank = {
+    params ["_faction"];
+    
+    private _vehicles = [_faction, "tank"] call BE_ListFactionUnits;
+    private _tanks = [];
+    
+    {
+        private _className = _x;
+        
+        // Excluir vehículos antiaéreos
+        private _isAA = [_className] call BE_IsAAVehicle;
+        if (_isAA) then { continue };
+        
+        private _weapons = count (getArray (configFile >> "CfgVehicles" >> _className >> "weapons"));
+        private _armor = getNumber (configFile >> "CfgVehicles" >> _className >> "armor");
+        
+        if (_weapons > 2 && _armor > 500) then {
+            _tanks pushBack _className;
+        };
+    } forEach _vehicles;
+    
+    if (count _tanks > 0) then {
+        selectRandom _tanks
+    } else {
+        private _side = [_faction] call BE_GetFactionSide;
+        private _alternativeVehicle = "";
+        switch (_side) do {
+            case west: { _alternativeVehicle = "B_MBT_01_cannon_F"; };
+            case east: { _alternativeVehicle = "O_MBT_02_cannon_F"; };
+            case independent: { _alternativeVehicle = "I_MBT_03_cannon_F"; };
+            default { _alternativeVehicle = "B_MBT_01_cannon_F"; };
+        };
+        _alternativeVehicle
+    }
+};
+
+BE_GetAttackHeli = {
+    params ["_faction"];
+    
+    private _vehicles = [_faction, "heli"] call BE_ListFactionUnits;
+    private _attackHelis = [];
+    
+    {
+        private _className = _x;
+        // Verificar si es helicóptero de ataque
+        if (_className isKindOf "Helicopter" && !(_className isKindOf "Heli_Transport")) then {
+            private _weapons = count (getArray (configFile >> "CfgVehicles" >> _className >> "weapons"));
+            private _magazines = count (getArray (configFile >> "CfgVehicles" >> _className >> "magazines"));
+            
+            // Helicópteros con sistemas de armas integrados
+            if (_weapons > 2 || _magazines > 3) then {
+                _attackHelis pushBack _className;
+            };
+        };
+    } forEach _vehicles;
+    
+    if (count _attackHelis > 0) then {
+        selectRandom _attackHelis
+    } else {
+        // Buscar helicópteros armados en categoría de transporte
+        private _transportHelis = [_faction, "heli_transport_armed"] call BE_ListFactionUnits;
+        if (count _transportHelis > 0) then {
+            selectRandom _transportHelis
+        } else {
+            ""
+        };
+    }
+};
+
+BE_FindSafeLandingZone = {
+    params ["_targetPos"];
+    
+    private _minEnemyDistance = 200;
+    private _minObstacleDistance = 50;
+    private _maxSearchRadius = 600;
+    private _bestPos = _targetPos;
+    private _bestScore = -1;
+    private _canLand = false;
+    
+    for "_r" from 80 to _maxSearchRadius step 40 do {
+        for "_a" from 0 to 359 step 15 do {
+            private _checkPos = _targetPos getPos [_r, _a];
+            
+            private _nearEnemies = _checkPos nearEntities ["Man", _minEnemyDistance];
+            private _enemyCount = count (_nearEnemies select {side _x getFriend side player < 0.6});
+            
+            if (_enemyCount == 0) then {
+                private _nearBuildings = _checkPos nearObjects ["Building", _minObstacleDistance];
+                private _nearTrees = _checkPos nearObjects ["Tree", _minObstacleDistance];
+                private _nearRocks = _checkPos nearObjects ["Rock", _minObstacleDistance];
+                
+                if ((count _nearBuildings == 0) && (count _nearTrees == 0) && (count _nearRocks == 0)) then {
+                    private _isFlat = _checkPos isFlatEmpty [
+                        15, -1, 0.25, 15, 0, false
+                    ];
+                    
+                    if (count _isFlat > 0) then {
+                        private _distScore = 1 - (_r / _maxSearchRadius);
+                        private _flatness = 1 - (abs(surfaceNormal _checkPos select 2) - 1);
+                        private _openness = 1 - (count (_checkPos nearObjects ["All", _minObstacleDistance * 0.8]) / 30);
+                        
+                        private _score = _distScore * 0.2 + _flatness * 0.4 + _openness * 0.4;
+                        
+                        if (_score > _bestScore) then {
+                            _bestScore = _score;
+                            _bestPos = _isFlat;
+                            _canLand = true;
+                        };
+                    };
+                };
+            };
+        };
+        
+        if (_bestScore > 0.7) exitWith {};
+    };
+    
+    if (!_canLand) then {
+        private _bestOpenPos = _targetPos;
+        private _bestOpenScore = -1;
+        
+        for "_r" from 100 to 500 step 50 do {
+            for "_a" from 0 to 359 step 20 do {
+                private _checkPos = _targetPos getPos [_r, _a];
+                private _nearObstacles = count (_checkPos nearObjects ["Building", 30]);
+                
+                if (_nearObstacles == 0) then {
+                    private _score = 1 - (_r / 500);
+                    if (_score > _bestOpenScore) then {
+                        _bestOpenScore = _score;
+                        _bestOpenPos = _checkPos;
+                        _canLand = true;
+                    };
+                };
+            };
+            if (_bestOpenScore > 0) exitWith {};
+        };
+        
+        if (_canLand) then {
+            _bestPos = _bestOpenPos;
+        };
+    };
+    
+    [_bestPos, _canLand]
+};
+
+BE_PrepareParadrop = {
+    params ["_veh", "_group"];
+    
+    _veh setVariable ["BE_ParadropMode", true, true];
+    _veh flyInHeight 400;
+    
+    {
+        if (vehicle _x == _veh && alive _x && !(_x in (crew _veh))) then {
+            if (backpack _x != "") then {
+                removeBackpack _x;
+            };
+            
+            sleep 0.1;
+            _x addBackpack "B_Parachute";
+            _x setVariable ["BE_ReadyForJump", true, false];
+        };
+    } forEach units _group;
+};
+
+BE_ExecuteParadrop = {
+    params ["_veh", "_group", "_targetPos"];
+    
+    _veh flyInHeight 400;
+    
+    waitUntil {
+        sleep 1;
+        ((_veh distance2D _targetPos) < 200) || (!alive _veh)
+    };
+    
+    if (!alive _veh) exitWith {};
+    
+    _veh limitSpeed 30;
+    _veh setVelocity ((velocity _veh) vectorMultiply 0.5);
+    
+    private _jumpersCount = {_x getVariable ["BE_ReadyForJump", false] && alive _x && vehicle _x == _veh} count units _group;
+    
+    {
+        if (_x getVariable ["BE_ReadyForJump", false] && alive _x && vehicle _x == _veh) then {
+            unassignVehicle _x;
+            _x action ["GetOut", _veh];
+            
+            [_x, _veh] spawn {
+                params ["_unit", "_heli"];
+                
+                waitUntil {vehicle _unit == _unit};
+                
+                _unit setVelocity (velocity _heli);
+                
+                [_unit] spawn {
+                    params ["_jumper"];
+                    
+                    sleep 2;
+                    
+                    private _height = (getPosATL _jumper) select 2;
+                    
+                    if (_height < 100) then {
+                        _jumper action ["OpenParachute", _jumper];
+                    } else {
+                        waitUntil {
+                            sleep 0.5;
+                            ((getPosATL _jumper) select 2) < 150 || !alive _jumper
+                        };
+                        
+                        if (alive _jumper) then {
+                            _jumper action ["OpenParachute", _jumper];
+                        };
+                    };
+                };
+            };
+            
+            sleep 0.5;
+        };
+    } forEach units _group;
+    
+    sleep 2;
+    
+    _veh limitSpeed -1;
+    _veh flyInHeight 150;
+};
+
+BE_MonitorHeliDamage = {
+    params ["_heli", "_group", "_targetPos", "_landingZone"];
+    
+    private _heliOK = true;
+    private _startTime = time;
+    private _hoverTime = 0;
+    private _lastPos = getPosATL _heli;
+    
+    private _timeNearLZ = 0;
+    private _inLandingZone = false;
+    
+    while {_heliOK && alive _heli} do {
+        private _damage = damage _heli;
+        
+        private _currentPos = getPosATL _heli;
+        private _isHovering = (_lastPos distance _currentPos) < 5;
+        
+        if (_isHovering) then {
+            _hoverTime = _hoverTime + 1;
+        } else {
+            _hoverTime = 0;
+        };
+        _lastPos = _currentPos;
+        
+        private _distToLZ = _heli distance2D _landingZone;
+        private _heliHeight = (getPosATL _heli) select 2;
+        
+        if (_distToLZ < 100 && _heliHeight > 50) then {
+            if (!_inLandingZone) then {
+                _inLandingZone = true;
+            };
+            _timeNearLZ = _timeNearLZ + 1;
+            
+            if (_timeNearLZ >= 60) then {
+                _heliOK = false;
+                [_heli, _group] call BE_PrepareParadrop;
+                [_heli, _group, _targetPos] spawn BE_ExecuteParadrop;
+            };
+        } else {
+            if (_inLandingZone) then {
+                _inLandingZone = false;
+                _timeNearLZ = 0;
+            };
+        };
+        
+        if (_damage >= 0.1 || _hoverTime > 15) then {
+            _heliOK = false;
+            [_heli, _group] call BE_PrepareParadrop;
+            [_heli, _group, _targetPos] spawn BE_ExecuteParadrop;
+        };
+        
+        if (time - _startTime > 120) then {
+            _heliOK = false;
+            [_heli, _group] call BE_PrepareParadrop;
+            [_heli, _group, _targetPos] spawn BE_ExecuteParadrop;
+        };
+        
+        sleep 1;
+    };
+};
+
+BE_IsEssentialCrew = {
+    params ["_unit"];
+    
+    private _veh = vehicle _unit;
+    if (_veh == _unit) exitWith { false };
+    
+    private _isDriver = driver _veh == _unit;
+    private _isGunner = gunner _veh == _unit;
+    private _isCommander = commander _veh == _unit;
+    private _isTurret = _unit in (allTurrets [_veh, true] apply {_veh turretUnit _x});
+    
+    (_isDriver || _isGunner || _isCommander || _isTurret)
+};
+
+// MEJORADO: Ahora asigna un líder específico para el grupo
+BE_AssignObjectiveToDisembarked = {
+    params ["_group", "_targetPos", "_landingZone"];
+    
+    private _dismountedUnits = [];
+    {
+        if (vehicle _x == _x && alive _x) then {
+            _dismountedUnits pushBack _x;
+        };
+    } forEach units _group;
+    
+    if (count _dismountedUnits > 0) then {
+        private _dismountedGroup = createGroup [side _group, true];
+        
+        // Transferir unidades al nuevo grupo
+        {
+            [_x] joinSilent _dismountedGroup;
+        } forEach _dismountedUnits;
+        
+        // Identificar el mejor candidato para líder (basado en rango/experiencia)
+        private _bestLeader = _dismountedUnits#0;
+        private _bestRank = 0;
+        
+        {
+            private _rankIndex = rankId _x;
+            if (_rankIndex > _bestRank) then {
+                _bestRank = _rankIndex;
+                _bestLeader = _x;
+            };
+        } forEach _dismountedUnits;
+        
+        // Asignar líder explícitamente
+        _dismountedGroup selectLeader _bestLeader;
+        
+        // Ordenar formación al nuevo líder
+        _bestLeader setRank "SERGEANT";
+        _bestLeader setBehaviour "AWARE";
+        
+        // Crear waypoint hacia el objetivo
+        private _wp = _dismountedGroup addWaypoint [_targetPos, 0];
+        _wp setWaypointType "SAD";
+        _wp setWaypointBehaviour "AWARE";
+        _wp setWaypointSpeed "NORMAL";
+        _wp setWaypointFormation "WEDGE";
+    };
+};
+
+BE_FindSafeSpawnPos = {
+    params ["_targetPos", "_isAir"];
+    
+    private _minDist = 800;
+    private _maxDist = 1000;
+    private _clearRadius = if (_isAir) then {50} else {10};
+    
+    private _spawnPos = [_targetPos, _minDist, _maxDist, _clearRadius, 0, 0.5, 0, [], [_targetPos, _targetPos]] call BIS_fnc_findSafePos;
+    
+    if (_spawnPos distance _targetPos < _minDist) then {
+        _spawnPos = [_targetPos, _minDist, _maxDist * 1.5, _clearRadius / 2, 0, 0.7, 0, [], [_targetPos, _targetPos]] call BIS_fnc_findSafePos;
+    };
+    
+    if (count _spawnPos == 2) then {
+        _spawnPos pushBack 0;
+    };
+    
+    if (_isAir) then {
+        _spawnPos set [2, 150];
+    };
+    
+    _spawnPos
+};
+
+BE_IsTransportVehicle = {
+    params ["_veh"];
+    
+    if (_veh isKindOf "Tank") exitWith { false };
+    if (_veh isKindOf "Plane") exitWith { false };
+    
+    private _weapons = count (getArray (configFile >> "CfgVehicles" >> typeOf _veh >> "weapons"));
+    private _capacity = getNumber (configFile >> "CfgVehicles" >> typeOf _veh >> "transportSoldier");
+    
+    (_weapons <= 2 && _capacity >= 4)
+};
+
+// Anti-bloqueo común para cualquier vehículo
+BE_AntiStuckSystem = {
+    params ["_veh", "_targetPos"];
+    
+    if (!alive _veh) exitWith {};
+    
+    sleep 15;
+    
+    private _lastPos = getPosATL _veh;
+    private _attempts = 0;
+    
+    while {alive _veh && _veh distance _targetPos > 100} do {
+        sleep 5;
+        private _currentPos = getPosATL _veh;
+        private _movedDistance = _lastPos distance _currentPos;
+        
+        if (_movedDistance < 5) then {
+            _attempts = _attempts + 1;
+            
+            if (_attempts >= 3) then {
+                // Obtener la tripulación
+                private _crew = crew _veh;
+                
+                {
+                    _x allowDamage false;
+                    _x disableAI "AUTOCOMBAT";
+                    _x disableAI "TARGET";
+                    _x disableAI "AUTOTARGET";
+                } forEach _crew;
+                
+                _veh setDir ([_veh, _targetPos] call BIS_fnc_dirTo);
+                _veh setVelocity [
+                    sin(direction _veh) * 10, 
+                    cos(direction _veh) * 10, 
+                    0
+                ];
+                
+                if (_attempts >= 5) then {
+                    private _newPos = [_targetPos, 300, 500, 10] call BIS_fnc_findSafePos;
+                    if (count _newPos == 2) then { _newPos pushBack 0; };
+                    _veh setPos _newPos;
+                    
+                    // Crear nuevo waypoint
+                    private _vehGroup = group (driver _veh);
+                    if (!isNull _vehGroup) then {
+                        while {count waypoints _vehGroup > 0} do {
+                            deleteWaypoint [_vehGroup, 0];
+                        };
+                        
+                        private _wp = _vehGroup addWaypoint [_targetPos, 0];
+                        _wp setWaypointType "MOVE";
+                        _wp setWaypointSpeed "FULL";
+                    };
+                    
+                    _attempts = 0;
+                };
+            };
+        } else {
+            _attempts = 0;
+        };
+        
+        _lastPos = _currentPos;
+    };
+};
+
+BE_FillCombatVehicle = {
+    params ["_veh", "_group", "_spawnPos", "_troops"];
+    
+    if (!(_veh getVariable ["BE_ReinforcementVehicle", false])) exitWith {
+        if (AIR_debug) then {
+            ["Skipping non-reinforcement vehicle: " + str(_veh)] call AIR_debugMessage;
+        };
+    };
+    
+    // Limpiar tripulación existente
+    {
+        if (vehicle _x == _veh) then {
+            moveOut _x;
+            deleteVehicle _x;
+        };
+    } forEach crew _veh;
+    
+    private _config = configFile >> "CfgVehicles" >> typeOf _veh;
+    private _allPositions = [];
+    
+    // 1. Posiciones de combate esenciales
+    _allPositions pushBack ["Driver", -1];
+    
+    if (getNumber (_config >> "hasCommander") == 1) then {
+        _allPositions pushBack ["Commander", -1];
+    };
+    
+    // 2. Todas las posiciones de torreta
+    private _turrets = [_veh] call BE_GetAllTurrets;
+    {
+        _allPositions pushBack ["Turret", _x];
+    } forEach _turrets;
+    
+    // 3. Posiciones FFV si existen
+    {
+        if (getNumber (_x >> "isFFV") == 1) then {
+            _allPositions pushBack ["FFV", _forEachIndex];
+        };
+    } forEach ("true" configClasses (_config >> "Turrets"));
+    
+    // 4. Posiciones de cargo regulares
+    private _maxCargo = getNumber (_config >> "transportSoldier");
+    if (_maxCargo > 0) then {
+        for "_i" from 0 to (_maxCargo - 1) do {
+            _allPositions pushBack ["Cargo", _i];
+        };
+    };
+    
+    if (AIR_debug) then {
+        ["Llenando vehículo de combate " + (typeOf _veh) + " - Total posiciones: " + str(count _allPositions)] call AIR_debugMessage;
+    };
+    
+    {
+        _x params ["_type", "_index"];
+        private _unit = _group createUnit [selectRandom _troops, _spawnPos, [], 0, "NONE"];
+        
+        switch (_type) do {
+            case "Driver": {
+                _unit assignAsDriver _veh;
+                _unit moveInDriver _veh;
+                if (AIR_debug) then {["Asignando conductor"] call AIR_debugMessage;};
+            };
+            case "Commander": {
+                _unit assignAsCommander _veh;
+                _unit moveInCommander _veh;
+                if (AIR_debug) then {["Asignando comandante"] call AIR_debugMessage;};
+            };
+            case "Turret": {
+                _unit assignAsTurret [_veh, _index];
+                _unit moveInTurret [_veh, _index];
+                if (AIR_debug) then {["Asignando artillero a torreta: " + str(_index)] call AIR_debugMessage;};
+            };
+            case "FFV": {
+                _unit assignAsTurret [_veh, [_index]];
+                _unit moveInTurret [_veh, [_index]];
+                if (AIR_debug) then {["Asignando unidad a FFV: " + str(_index)] call AIR_debugMessage;};
+            };
+            case "Cargo": {
+                _unit assignAsCargo _veh;
+                _unit moveInCargo [_veh, _index];
+                if (AIR_debug) then {["Asignando unidad a cargo: " + str(_index)] call AIR_debugMessage;};
+            };
+        };
+        
+        if (vehicle _unit != _veh) then {
+            _unit moveInAny _veh;
+            if (vehicle _unit != _veh) then {
+                if (AIR_debug) then {["No se pudo asignar unidad - eliminando"] call AIR_debugMessage;};
+                deleteVehicle _unit;
+            };
+        };
+        
+        sleep 0.1;
+    } forEach _allPositions;
+    
+    // Verificación final
+    private _finalCrew = crew _veh;
+    if (AIR_debug) then {
+        ["Vehículo de combate llenado. Total tripulación: " + str(count _finalCrew)] call AIR_debugMessage;
+    };
+};
+
+BE_GetAllTurrets = {
+    params ["_veh"];
+    private _allTurrets = [];
+    private _config = configFile >> "CfgVehicles" >> typeOf _veh;
+    
+    private _fnc_processPath = {
+        params ["_root", "_path"];
+        private _turretConfig = _root >> "Turrets";
+        for "_i" from 0 to (count _turretConfig - 1) do {
+            private _turret = _turretConfig select _i;
+            if (isClass _turret) then {
+                private _newPath = _path + [_i];
+                _allTurrets pushBack _newPath;
+                [_turret, _newPath] call _fnc_processPath;
+            };
+        };
+    };
+    
+    [_config, []] call _fnc_processPath;
+    _allTurrets
+};
