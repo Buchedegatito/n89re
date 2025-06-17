@@ -1,0 +1,709 @@
+
+// Función auxiliar para llenar vehículos al máximo
+BE_FillVehicleToMax = {
+    params ["_veh", "_group", "_spawnPos", "_troops"];
+    
+    // Limpiar cualquier unidad existente que no sea tripulación esencial
+    {
+        if (vehicle _x == _veh && !([_x] call BE_IsEssentialCrew)) then {
+            moveOut _x;
+            deleteVehicle _x;
+        };
+    } forEach crew _veh;
+    
+    // Obtener TODAS las posiciones posibles
+    private _allPositions = [];
+    
+    // 1. Posiciones de cargo regulares
+    private _maxCargo = getNumber (configFile >> "CfgVehicles" >> typeOf _veh >> "transportSoldier");
+    for "_i" from 0 to (_maxCargo - 1) do {
+        _allPositions pushBack ["Cargo", _i];
+    };
+    
+    // 2. Posiciones FFV (Fire From Vehicle)
+    private _config = configFile >> "CfgVehicles" >> typeOf _veh;
+    private _turrets = _config >> "Turrets";
+    for "_i" from 0 to (count _turrets - 1) do {
+        private _turret = _turrets select _i;
+        if (getNumber (_turret >> "isFFV") == 1) then {
+            _allPositions pushBack ["FFV", _i];
+        };
+    };
+    
+    // Debug inicial
+    if (AIR_debug) then {
+        ["Intentando llenar vehículo " + (typeOf _veh) + " - Espacios de cargo: " + str(_maxCargo)] call AIR_debugMessage;
+    };
+    
+    // Llenar cada posición
+    {
+        _x params ["_type", "_index"];
+        private _unit = _group createUnit [selectRandom _troops, _spawnPos, [], 0, "NONE"];
+        
+        switch (_type) do {
+            case "Cargo": {
+                _unit assignAsCargo _veh;
+                _unit moveInCargo [_veh, _index];
+                
+                if (AIR_debug) then {
+                    ["Intentando mover unidad a cargo " + str(_index)] call AIR_debugMessage;
+                };
+            };
+            case "FFV": {
+                _unit assignAsTurret [_veh, [_index]];
+                _unit moveInTurret [_veh, [_index]];
+                
+                if (AIR_debug) then {
+                    ["Intentando mover unidad a FFV " + str(_index)] call AIR_debugMessage;
+                };
+            };
+        };
+        
+        // Verificar si la unidad realmente entró
+        if (vehicle _unit != _veh) then {
+            // Primer intento: moveInAny
+            _unit moveInAny _veh;
+            
+            // Segundo intento: forzar cargo
+            if (vehicle _unit != _veh) then {
+                _veh lockCargo false;
+                _unit moveInCargo _veh;
+            };
+            
+            // Si aún no está dentro, intentar una última vez con cualquier posición
+            if (vehicle _unit != _veh) then {
+                {
+                    _unit moveInCargo [_veh, _forEachIndex];
+                    if (vehicle _unit == _veh) exitWith {};
+                } forEach fullCrew [_veh, "cargo", true];
+            };
+            
+            // Si definitivamente no puede entrar
+            if (vehicle _unit != _veh) then {
+                if (AIR_debug) then {
+                    ["No se pudo colocar unidad en el vehículo - eliminando"] call AIR_debugMessage;
+                };
+                deleteVehicle _unit;
+            };
+        };
+        
+        sleep 0.1;
+    } forEach _allPositions;
+    
+    // Verificación final
+    private _finalCrew = crew _veh select {!([_x] call BE_IsEssentialCrew)};
+    
+    if (AIR_debug) then {
+        ["Vehículo llenado. Posiciones totales/Tropas actuales: " + str(count _allPositions) + "/" + str(count _finalCrew)] call AIR_debugMessage;
+    };
+    
+    // Asegurarse de que las unidades estén listas para el combate
+    {
+        if (!([_x] call BE_IsEssentialCrew)) then {
+            _x setUnitLoadout (getUnitLoadout _x);
+            _x setSkill 0.7;
+            _x allowFleeing 0;
+        };
+    } forEach crew _veh;
+};
+
+BE_HandleVehicleEmergency = {
+    params ["_vehicle", "_group", "_targetPos"];
+    
+    {
+        unassignVehicle _x;
+        _x action ["Eject", _vehicle];
+    } forEach (crew _vehicle);
+    
+    // Nueva orden para el grupo a pie
+    _group setFormation "WEDGE";
+    
+    // Limpiar waypoints anteriores
+    while {count (waypoints _group) > 0} do {
+        deleteWaypoint ((waypoints _group) select 0);
+    };
+    
+    // Nuevo waypoint para continuar a pie
+    private _wpEmergency1 = _group addWaypoint [_targetPos, 0];
+    _wpEmergency1 setWaypointType "MOVE";
+    _wpEmergency1 setWaypointBehaviour "AWARE";
+    _wpEmergency1 setWaypointCombatMode "GREEN";
+    _wpEmergency1 setWaypointSpeed "NORMAL";
+    
+    // Al llegar, entrar en combate
+    private _wpEmergency2 = _group addWaypoint [_targetPos, 1];
+    _wpEmergency2 setWaypointType "SAD";
+    _wpEmergency2 setWaypointBehaviour "COMBAT";
+    _wpEmergency2 setWaypointCombatMode "RED";
+};
+
+// Nueva función para manejar emboscadas
+BE_HandleAmbush = {
+    params ["_group", "_veh"];
+    
+    if (!alive _veh) exitWith {};
+    
+    // Añadir manejador de daño para el vehículo
+    private _ehID = _veh addEventHandler ["Hit", {
+        params ["_unit", "_source", "_damage", "_instigator"];
+        private _hits = _unit getVariable ["BE_recentHits", []];
+        _hits pushBack [_damage, time];
+        _unit setVariable ["BE_recentHits", _hits];
+    }];
+    
+    // Bucle de monitoreo
+    [_group, _veh] spawn {
+        params ["_group", "_veh"];
+        private _combatInitiated = false;
+        
+        while {alive _veh && !(_veh getVariable ["BE_UnloadingComplete", false])} do {
+            if ([_veh] call BE_IsUnderHeavyFire && !_combatInitiated) then {
+                _combatInitiated = true;
+                
+                // Notificar emboscada
+                ["BASE: ¡Los refuerzos han sido emboscados!"] remoteExec ["systemChat", 0];
+                
+                // Determinar si bajarse o continuar
+                private _enemyNear = false;
+                private _nearUnits = _veh nearEntities ["CAManBase", 300];
+                {
+                    if (side _x getFriend side _group < 0.6 && alive _x) exitWith {
+                        _enemyNear = true;
+                    };
+                } forEach _nearUnits;
+                
+                if (_enemyNear && speed _veh < 30) then {
+                    // Desembarcar y combatir
+                    {
+                        if (vehicle _x == _veh && !([_x] call BE_IsEssentialCrew)) then {
+                            unassignVehicle _x;
+                            [_x] orderGetIn false;
+                            _x action ["Eject", _veh];
+                            _x setBehaviour "COMBAT";
+                            _x setCombatMode "RED";
+                        };
+                    } forEach units _group;
+                    
+                    // Crear waypoint de combate
+                    while {count waypoints _group > 0} do {
+                        deleteWaypoint [_group, 0];
+                    };
+                    
+                    private _wp = _group addWaypoint [getPos _veh, 0];
+                    _wp setWaypointType "SAD";
+                    _wp setWaypointBehaviour "COMBAT";
+                } else {
+                    // Aumentar velocidad y continuar
+                    _veh setSpeedMode "FULL";
+                    {
+                        _x setBehaviour "AWARE";
+                    } forEach units _group;
+                };
+            };
+            sleep 1;
+        };
+    };
+};
+
+BE_IsUnderHeavyFire = {
+    params ["_veh"];
+    private _damageThreshold = 0.1;
+    private _timeWindow = 10;
+    private _hits = _veh getVariable ["BE_recentHits", []];
+    private _currentTime = time;
+    
+    // Limpiar hits antiguos
+    _hits = _hits select {(_currentTime - (_x select 1)) <= _timeWindow};
+    _veh setVariable ["BE_recentHits", _hits];
+    
+    private _totalDamage = 0;
+    {
+        _totalDamage = _totalDamage + (_x select 0);
+    } forEach _hits;
+    
+    (_totalDamage > _damageThreshold)
+};
+
+BE_SendReinforcements = {
+    params ["_requestingUnit", "_targetPos"];
+    
+    private _side = side _requestingUnit;
+    private _faction = faction _requestingUnit;
+    
+    // 25% aéreo para IA, 75% terrestre
+    private _useAir = random 100 < 25;
+    private _useTank = random 100 < 10; // 10% de probabilidad de usar tanque
+    
+    if (AIR_debug) then {
+        ["Iniciando despliegue de refuerzos. Verificando capacidades de vehículos..."] call AIR_debugMessage;
+    };
+    
+    // Verificar si hay helicópteros disponibles
+    if (_useAir) then {
+        private _heliTransport = [_faction, true] call BE_GetTransportVehicle;
+        if (_heliTransport == "") then {
+            ["Facción " + _faction + " no tiene helicópteros de transporte, usando refuerzos terrestres"] call AIR_debugMessage;
+            _useAir = false;
+        };
+    };
+    
+    private _troops = [_faction] call BE_GetArmedCombatUnits;
+    if (count _troops == 0) exitWith { 
+        ["Facción " + _faction + " no tiene unidades de combate, no se pueden enviar refuerzos"] call AIR_debugMessage;
+        false 
+    };
+    
+    private _mainTransport = "";
+    if (_useAir) then {
+        _mainTransport = [_faction, true] call BE_GetTransportVehicle;
+    } else {
+        _mainTransport = [_faction, false] call BE_GetTransportVehicle;
+        if (_mainTransport == "") then {
+            _mainTransport = selectRandom ["C_Truck_02_covered_F", "C_Truck_02_transport_F"];
+        };
+    };
+    
+    private _spawnPos = [_targetPos, _useAir] call BE_FindSafeSpawnPos;
+    
+    private _landingInfo = [_targetPos];
+    private _landingZone = _targetPos;
+    private _canLand = true;
+    
+    if (_useAir) then {
+        _landingInfo = [_targetPos] call BE_FindSafeLandingZone;
+        _landingZone = _landingInfo select 0;
+        _canLand = _landingInfo select 1;
+    };
+    
+    private _reinforcementGroup = createGroup [_side, true];
+    
+    private _fnc_createVehicleWithCrew = {
+        params ["_vehicleClass", "_spawnPosition", "_group", ["_isHeli", false]];
+        
+        private _spawnMode = if (_isHeli) then {"FLY"} else {"NONE"};
+        private _veh = createVehicle [_vehicleClass, _spawnPosition, [], 0, _spawnMode];
+        
+        // Marcar como vehículo de refuerzos
+        _veh setVariable ["BE_ReinforcementVehicle", true, true];
+        
+        if (_isHeli) then {
+            _veh setPosATL [_spawnPosition select 0, _spawnPosition select 1, 150];
+            _veh flyInHeight 150;
+            _veh engineOn true;
+        };
+        
+        if (AIR_debug) then {
+            private _maxCapacity = getNumber (configFile >> "CfgVehicles" >> _vehicleClass >> "transportSoldier");
+            ["Vehículo creado: " + _vehicleClass + " con capacidad máxima de: " + str(_maxCapacity)] call AIR_debugMessage;
+        };
+        
+        _veh
+    };
+    
+    // LÓGICA SEPARADA PARA AÉREO VS TERRESTRE
+    if (_useAir) then {
+        // DESPLIEGUE AÉREO
+        private _mainVeh = [_mainTransport, _spawnPos, _reinforcementGroup, true] call _fnc_createVehicleWithCrew;
+        
+        // Llenar el helicóptero
+        [_mainVeh, _reinforcementGroup, _spawnPos, _troops] call BE_FillCombatVehicle;
+        
+        // Registrar para sistema anti-bloqueo y emergencias
+        [_mainVeh, _reinforcementGroup, _targetPos] call BE_HandleVehicleEmergency;
+        
+        private _supportVehicles = [];
+        
+        // Posible helicóptero de ataque como escolta
+        private _attackHeli = [_faction] call BE_GetAttackHeli;
+        if (_attackHeli != "" && {_attackHeli call BE_fnc_isFromFaction}) then {
+            private _attackHeliPos = [_spawnPos, 25, 40, 15] call BIS_fnc_findSafePos;
+            if (count _attackHeliPos == 2) then { _attackHeliPos pushBack 0; };
+            private _attackHeliVeh = [_attackHeli, _attackHeliPos, _reinforcementGroup, true] call _fnc_createVehicleWithCrew;
+            [_attackHeliVeh, _reinforcementGroup, _spawnPos, _troops] call BE_FillCombatVehicle;
+            _supportVehicles pushBack _attackHeliVeh;
+            
+            [_attackHeliVeh, _reinforcementGroup, _targetPos] call BE_HandleVehicleEmergency;
+        };
+        
+        // Configurar helicóptero para paracaídas si es necesario
+        if (!_canLand) then {
+            [_mainVeh, _reinforcementGroup] call BE_PrepareParadrop;
+        };
+        
+        // Iniciar monitor de daños
+        [_mainVeh, _reinforcementGroup, _targetPos, _landingZone] spawn BE_MonitorHeliDamage;
+        
+        // WAYPOINTS PARA HELICÓPTERO
+        while {count waypoints _reinforcementGroup > 0} do {
+            deleteWaypoint [_reinforcementGroup, 0];
+        };
+        
+        private _dirVector = [_targetPos, _spawnPos] vectorFromTo [0,0,0];
+        private _slowdownPos = _targetPos vectorAdd (_dirVector vectorMultiply 150);
+        
+        private _wp0 = _reinforcementGroup addWaypoint [_slowdownPos, 0];
+        _wp0 setWaypointType "MOVE";
+        _wp0 setWaypointSpeed "NORMAL";
+        _wp0 setWaypointBehaviour "AWARE";
+        _wp0 setWaypointCompletionRadius 20;
+        
+        private _finalSlowPos = _targetPos vectorAdd (_dirVector vectorMultiply 80);
+        private _wp1 = _reinforcementGroup addWaypoint [_finalSlowPos, 1];
+        _wp1 setWaypointType "MOVE";
+        _wp1 setWaypointSpeed "LIMITED";
+        _wp1 setWaypointBehaviour "AWARE";
+        _wp1 setWaypointCompletionRadius 15;
+        
+        private _wp2 = _reinforcementGroup addWaypoint [_landingZone, 2];
+        
+        if (_canLand) then {
+            _wp2 setWaypointType "SCRIPTED";
+            _wp2 setWaypointCompletionRadius 50;
+            _wp2 setWaypointStatements ["true", "
+                (group this) setCombatMode 'RED';
+                (group this) setBehaviour 'COMBAT';
+                
+                vehicle this limitSpeed 0;
+                vehicle this setVelocity [0,0,0];
+                
+                [vehicle this] spawn {
+                    params ['_veh'];
+                    sleep 3;
+                    
+                    private _allUnits = [];
+                    {
+                        if (vehicle _x == _veh) then {
+                            _allUnits pushBack _x;
+                        };
+                    } forEach allUnits;
+                    
+                    {
+                        if !([_x, _veh] call BE_fnc_shouldStayInVehicle) then {
+                            unassignVehicle _x;
+                            [_x] orderGetIn false;
+                            _x action ['Eject', _veh];
+                            sleep 0.3;
+                        };
+                    } forEach _allUnits;
+                    
+                    _veh setVariable ['BE_UnloadingComplete', true, true];
+                };
+            "];
+        } else {
+            _wp2 setWaypointType "MOVE";
+            _wp2 setWaypointStatements ["true", "
+                [vehicle this, group this, " + str(_targetPos) + "] spawn BE_ExecuteParadrop;
+            "];
+        };
+        
+        _wp2 setWaypointSpeed "LIMITED";
+        _wp2 setWaypointBehaviour "AWARE";
+        
+        private _wp3 = _reinforcementGroup addWaypoint [_targetPos, 3];
+        _wp3 setWaypointType "SAD";
+        _wp3 setWaypointBehaviour "COMBAT";
+        _wp3 setWaypointCombatMode "RED";
+        
+        // Configurar waypoints para helicóptero de ataque
+        {
+            private _vehGroup = createGroup [_side, true];
+            private _veh = _x;
+            
+            {
+                if (vehicle _x == _veh) then {
+                    [_x] joinSilent _vehGroup;
+                };
+            } forEach units _reinforcementGroup;
+            
+            private _offset = random 50;
+            private _slowdownPos = _targetPos getPos [150 + _offset, random 360];
+            private _wp0 = _vehGroup addWaypoint [_slowdownPos, 0];
+            _wp0 setWaypointType "MOVE";
+            _wp0 setWaypointSpeed "NORMAL";
+            
+            private _finalPos = _targetPos getPos [80 + _offset, random 360];
+            private _wp1 = _vehGroup addWaypoint [_finalPos, 1];
+            _wp1 setWaypointType "SAD";
+            _wp1 setWaypointSpeed "LIMITED";
+            
+            private _wp2 = _vehGroup addWaypoint [_targetPos, 2];
+            _wp2 setWaypointType "SAD";
+            _wp2 setWaypointBehaviour "COMBAT";
+        } forEach _supportVehicles;
+        
+    } else {
+        // DESPLIEGUE TERRESTRE
+        private _allVehicles = [];
+        private _mainVeh = nil;
+        
+        // 1. TRANSPORTE PRINCIPAL
+        _mainVeh = [_mainTransport, _spawnPos, _reinforcementGroup, false] call _fnc_createVehicleWithCrew;
+        [_mainVeh, _reinforcementGroup, _spawnPos, _troops] call BE_FillCombatVehicle;
+        _allVehicles pushBack _mainVeh;
+        
+        // Manejo de emergencias para el vehículo principal
+        [_mainVeh, _reinforcementGroup, _targetPos] call BE_HandleVehicleEmergency;
+        
+        // 2. VEHÍCULOS DE SOPORTE
+        private _supportVehicles = [];
+        private _supportTypes = [];
+        
+        // Añadir vehículo blindado básico
+        private _basicArmored = [_faction] call BE_GetBasicArmoredVehicle;
+        if (_basicArmored != "") then {
+            if (_basicArmored call BE_fnc_isFromFaction) then {
+                _supportTypes pushBack _basicArmored;
+            };
+        };
+        
+        // Añadir vehículo blindado pesado
+        private _heavyArmored = [_faction] call BE_GetArmoredVehicle;
+        if (_heavyArmored != "") then {
+            if (_heavyArmored call BE_fnc_isFromFaction) then {
+                _supportTypes pushBack _heavyArmored;
+            };
+        };
+        
+        // Añadir tanque si está permitido
+        if (_useTank) then {
+            private _tank = [_faction] call BE_GetTank;
+            if (_tank != "" && {_tank call BE_fnc_isFromFaction}) then {
+                _supportTypes pushBack _tank;
+            };
+        };
+        
+        // Si no se encontraron vehículos de apoyo de la facción, usar transporte adicional
+        if (count _supportTypes == 0) then {
+            private _extraTransport = [_faction, false] call BE_GetTransportVehicle;
+            if (_extraTransport != "") then {
+                _supportTypes pushBack _extraTransport;
+            };
+        };
+        
+        // Crear vehículos de apoyo
+        {
+            private _vehClass = _x;
+            private _vehPos = [_spawnPos, 30 * (_forEachIndex + 1), 50, 8] call BIS_fnc_findSafePos;
+            if (count _vehPos == 2) then { _vehPos pushBack 0; };
+            
+            private _supportVeh = [_vehClass, _vehPos, _reinforcementGroup] call _fnc_createVehicleWithCrew;
+            [_supportVeh, _reinforcementGroup, _spawnPos, _troops] call BE_FillCombatVehicle;
+            
+            _supportVehicles pushBack _supportVeh;
+            _allVehicles pushBack _supportVeh;
+            
+            // Manejo de emergencias para cada vehículo de apoyo
+            [_supportVeh, _reinforcementGroup, _targetPos] call BE_HandleVehicleEmergency;
+        } forEach _supportTypes;
+        
+        // WAYPOINTS PARA VEHÍCULOS DE APOYO
+        {
+            private _vehGroup = createGroup [_side, true];
+            private _veh = _x;
+            
+            {
+                if (vehicle _x == _veh) then {
+                    [_x] joinSilent _vehGroup;
+                };
+            } forEach units _reinforcementGroup;
+            
+            private _offset = random 50;
+            private _slowdownPos = _targetPos getPos [150 + _offset, random 360];
+            private _wp0 = _vehGroup addWaypoint [_slowdownPos, 0];
+            _wp0 setWaypointType "MOVE";
+            _wp0 setWaypointSpeed "NORMAL";
+            
+            private _finalPos = _targetPos getPos [80 + _offset, random 360];
+            private _wp1 = _vehGroup addWaypoint [_finalPos, 1];
+            _wp1 setWaypointType "SAD";
+            _wp1 setWaypointSpeed "LIMITED";
+            
+            private _wp2 = _vehGroup addWaypoint [_targetPos, 2];
+            _wp2 setWaypointType "SAD";
+            _wp2 setWaypointBehaviour "COMBAT";
+        } forEach _supportVehicles;
+        
+        // WAYPOINTS PARA TRANSPORTE DE TROPAS
+        while {count waypoints _reinforcementGroup > 0} do {
+            deleteWaypoint [_reinforcementGroup, 0];
+        };
+        
+        private _dirVector = [_targetPos, _spawnPos] vectorFromTo [0,0,0];
+        private _slowdownPos = _targetPos vectorAdd (_dirVector vectorMultiply 150);
+        
+        private _wp0 = _reinforcementGroup addWaypoint [_slowdownPos, 0];
+        _wp0 setWaypointType "MOVE";
+        _wp0 setWaypointSpeed "NORMAL";
+        _wp0 setWaypointBehaviour "AWARE";
+        _wp0 setWaypointCompletionRadius 20;
+        
+        private _finalSlowPos = _targetPos vectorAdd (_dirVector vectorMultiply 80);
+        private _wp1 = _reinforcementGroup addWaypoint [_finalSlowPos, 1];
+        _wp1 setWaypointType "MOVE";
+        _wp1 setWaypointSpeed "LIMITED";
+        _wp1 setWaypointBehaviour "AWARE";
+        _wp1 setWaypointCompletionRadius 15;
+        
+        private _wp2 = _reinforcementGroup addWaypoint [_targetPos, 2];
+        _wp2 setWaypointType "SCRIPTED";
+        _wp2 setWaypointSpeed "LIMITED";
+        _wp2 setWaypointBehaviour "AWARE";
+        _wp2 setWaypointCompletionRadius 50;
+        
+        _wp2 setWaypointStatements ["true", "
+            (group this) setCombatMode 'RED';
+            (group this) setBehaviour 'COMBAT';
+            
+            vehicle this limitSpeed 0;
+            vehicle this setVelocity [0,0,0];
+            
+            [vehicle this] spawn {
+                params ['_veh'];
+                
+                private _allUnits = [];
+                {
+                    if (vehicle _x == _veh) then {
+                        _allUnits pushBack _x;
+                    };
+                } forEach allUnits;
+                
+                {
+                    if !([_x, _veh] call BE_fnc_shouldStayInVehicle) then {
+                        unassignVehicle _x;
+                        [_x] orderGetIn false;
+                        _x action ['Eject', _veh];
+                        sleep 0.3;
+                    };
+                } forEach _allUnits;
+                
+                _veh setVariable ['BE_UnloadingComplete', true, true];
+                _veh setVariable ['BE_UnloadTime', time, true];
+            };
+        "];
+        
+        private _wp3 = _reinforcementGroup addWaypoint [_targetPos, 3];
+        _wp3 setWaypointType "SAD";
+        _wp3 setWaypointBehaviour "COMBAT";
+        _wp3 setWaypointCombatMode "RED";
+    };
+    
+    // Notificar a las unidades enemigas sobre el refuerzo
+    [_side] spawn BE_NotifyEnemyReinforcements;
+    
+    true
+};
+
+/*****************************************************
+ * PARTE 3: INTEGRACIÓN DE SISTEMAS
+ *****************************************************/
+AIR_sendReinforcements = {
+    params ["_group"];
+    
+    private _faction = faction (leader _group);
+    
+    // Debug para ayudar a identificar el problema
+    if (AIR_debug) then {
+        private _lastReinforcement = AIR_factionCooldowns getOrDefault [_faction, AIR_systemStartTime];
+        private _timeSinceLastReinforcement = time - _lastReinforcement;
+        ["DEBUG: Facción: " + _faction + ", Último refuerzo: " + str(_lastReinforcement) + ", Tiempo transcurrido: " + str(_timeSinceLastReinforcement)] call AIR_debugMessage;
+    };
+    
+    // Verificar cooldown de facción
+    if !([_faction] call AIR_checkFactionCooldown) exitWith {
+        false
+    };
+    
+    // Verificar probabilidad de éxito
+    if (random 100 > AIR_reinforceChance) exitWith {
+        ["Solicitud de refuerzos rechazada para " + str(_group)] call AIR_debugMessage;
+        false
+    };
+    
+    // Actualizar cooldown de facción solo si la solicitud fue exitosa
+    AIR_factionCooldowns set [_faction, time];
+    
+    // Marcar tiempo de último refuerzo
+    _group setVariable ["AIR_lastReinforcement", time];
+    
+    // Posición del grupo
+    private _leader = leader _group;
+    private _pos = getPosATL _leader;
+    
+    // Debug adicional
+    if (AIR_debug) then {
+        ["Refuerzos aprobados para facción " + _faction + " en posición " + str(_pos)] call AIR_debugMessage;
+    };
+    
+    // Animación de radio para el líder
+    [_leader, "RadioProtocol"] remoteExec ["playActionNow", 0];
+    
+    // Efecto visual para debug
+    if (AIR_debug) then {
+        "SmokeShellRed" createVehicle _pos;
+    };
+    
+    // Llamar al sistema táctico de refuerzos
+    [_leader, _pos] spawn BE_SendReinforcements;
+    
+    true
+};
+
+// Función para reiniciar el sistema de cooldown (útil para debugging)
+AIR_resetCooldowns = {
+    AIR_factionCooldowns = createHashMap;
+    AIR_systemStartTime = time;
+    ["Sistema de cooldown reiniciado"] call AIR_debugMessage;
+};
+
+/*****************************************************
+ * PARTE 4: BUCLE PRINCIPAL Y EVENTOS
+ *****************************************************/
+
+// Bucle principal - monitorea los grupos
+[] spawn {
+    // Esperar a que la misión inicie
+    sleep 10;
+    
+    // Registrar grupos existentes
+    call AIR_registerExistingGroups;
+    
+    ["Sistema de refuerzos IA iniciado. Monitoreando " + str(count AIR_reinforcementGroups) + " grupos"] call AIR_debugMessage;
+    
+    // Bucle principal
+    while {true} do {
+        // Limpiar grupos nulos o destruidos
+        AIR_reinforcementGroups = AIR_reinforcementGroups select {!isNull _x && !isNull leader _x && alive leader _x};
+        
+        // Verificar grupos nuevos cada 30 segundos
+        if (time % 30 < 1) then {
+            call AIR_registerExistingGroups;
+        };
+        
+        // Comprobar cada grupo
+        {
+            private _group = _x;
+            
+            if ([_group] call AIR_checkGroupForReinforcement) then {
+                [_group] spawn AIR_sendReinforcements;
+            };
+        } forEach AIR_reinforcementGroups;
+        
+        sleep 5;
+    };
+};
+
+// Evento para grupos Zeus
+if (!isNil "zen_common_fnc_initDisplayCurator") then {
+    ["zen_createdGroup", {
+        params ["_group"];
+        
+        if (!isPlayer leader _group && count units _group >= 4) then {
+            _group setVariable ["AIR_initialStrength", count units _group];
+            _group setVariable ["AIR_lastReinforcement", 0];
+            
+            AIR_reinforcementGroups pushBackUnique _group;
+            
+            ["Grupo Zeus registrado: " + str(_group) + " con " + str(count units _group) + " unidades"] call AIR_debugMessage;
+        };
+    }] call CBA_fnc_addEventHandler;
+};
